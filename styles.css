@@ -89,3 +89,18 @@ tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 
 .row-photo{margin-right:5px;padding:4px 8px;background:#eef7ff;color:#165a92;border:1px solid #b7d6ec;border-radius:7px;font-size:12px}
 .row-photo:hover{background:#dbedfc}
+
+/* Synchronized operator verification: data and original image remain visible together. */
+.review-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(250px,32%);gap:14px;align-items:start}
+.review-split>.table-scroll{min-width:0;overflow-x:auto}
+.review-side-panel{position:sticky;top:14px;max-height:75vh;overflow:auto;background:#f7fafc;
+  border:1px solid #cfdeeb;border-radius:12px;padding:12px;min-width:0}
+.review-side-panel>strong{display:block;font-size:13px;margin-bottom:4px}
+.review-side-panel img{display:block;width:100%;height:auto;max-height:280px;object-fit:contain;
+  margin:9px 0;background:white;border:1px solid #dfe7ef;border-radius:7px}
+.review-side-panel img[hidden]{display:none}
+.review-side-panel .help{font-size:11px;overflow-wrap:anywhere}
+.perspective-result{margin:10px 0;padding:12px;border-radius:10px;background:#f7fbff;border:1px solid #b9d2e6}
+.perspective-result img{display:block;max-width:100%;max-height:330px;object-fit:contain;margin:auto}
+.perspective-result img[hidden]{display:none}
+@media(max-width:1050px){.review-split{grid-template-columns:minmax(0,1fr)}.review-side-panel{position:relative;top:auto;max-height:none}}
