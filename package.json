@@ -1,11 +1,20 @@
 {
   "name": "tensei",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Portable handwriting journal OCR via Cloud.ru",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check server.mjs && node --check app.js && node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "sharp": "^0.34.4",
+    "bmp-js": "^0.1.0"
   }
 }
