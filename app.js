@@ -1,8 +1,8 @@
 import {humorCategory,createHumorRotator} from './humor-messages.js';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
-const columns=['time','vehicle','driver','tare','gross','net','note'];
-const titles={time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
+const columns=['tripDate','time','vehicle','driver','tare','gross','net','note'];
+const titles={tripDate:'Дата рейса',time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
 
 function status(message,kind='info'){
   const box=$('notice');
@@ -37,6 +37,7 @@ function inspect(items){
     const issues=[];
     if(row.uncertain&&!row.reviewed)issues.push('Модель не уверена в записи');
     if(!text(row.vehicle).trim())issues.push('Нет номера автомобиля');
+    if(row.tripDate&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(row.tripDate))issues.push('Проверьте дату рейса');
     if(row.vehicleUnlisted&&!row.reviewed)issues.push('ТС нет в подтверждённом справочнике');
     if(row.time&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(row.time))issues.push('Проверьте время');
     const gross=asWeight(row.gross),tare=asWeight(row.tare),net=asWeight(row.net);
