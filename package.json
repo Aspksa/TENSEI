@@ -1,0 +1,11 @@
+{
+  "name": "tensei",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  }
+}
