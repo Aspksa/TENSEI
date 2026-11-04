@@ -396,7 +396,9 @@ async function refreshScanLibrary(){
       actions.append(retry);
     }
     const original=document.createElement('a');original.href='/api/scans/'+scan.id+'/original';
-    original.textContent='Оригинал';original.title='Скачать исходный файл без изменений';
+    original.textContent=scan.legacy?'JPEG из старой версии':'Оригинал';
+    original.title=scan.legacy?'В старой версии исходник не сохранялся, восстановлен подготовленный JPEG.':
+      'Скачать исходный файл без изменений';
     original.setAttribute('download',scan.name);actions.append(original);
     card.append(actions);
     if(scan.error){
@@ -614,10 +616,21 @@ function showSource(row){
   $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
 }
 
+async function showStorageWarning(){
+  try{
+    const info=await api('storage',undefined,'GET');
+    if(!info.cloudSyncRisk)return;
+    const p=$('storageWarning');
+    p.hidden=false;
+    p.textContent='Внимание: папка TENSEI находится в синхронизируемом облачном каталоге ('+
+      info.dataDirectory+'). Сканы, водители и незашифрованный API-ключ могут попасть в OneDrive. '+
+      'Для полностью локального хранения перенесите TENSEI на SSD или в папку вне OneDrive.';
+  }catch{}
+}
 async function initialize(){
   updateSummary();renderTable();renderAudit();drawQueue();
   await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{}),
-    refreshScanLibrary().catch(()=>{})]);
+    refreshScanLibrary().catch(()=>{}),showStorageWarning()]);
   try{
     const cfg=await api('settings',undefined,'GET');
     populateModels(cfg.models,cfg.model);
