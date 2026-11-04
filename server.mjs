@@ -234,8 +234,8 @@ async function readFleetImports(){
     index=[];
   }
   let count=0;
-  if(index.length>50)warnings.push('Сохранено больше 50 импортов: ранние CSV не входят в статистику. Итог НЕ является полным.');
-  for(const entry of index.slice(0,50)){
+  if(index.length>2000)warnings.push('История превышает лимит 2000 импортов. Итог НЕ является полным.');
+  for(const entry of index.slice(0,2000)){
     if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
     const file=path.join(dataDir,'legion','imports',entry.id+'.json');
     let data;
@@ -244,7 +244,7 @@ async function readFleetImports(){
     if(!Array.isArray(data?.rows)){warnings.push('Пропущен повреждённый импорт '+entry.id);continue}
     const remaining=limit-count;
     if(remaining===0){
-      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      if(data.rows.length)warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
       break;
     }
     const rows=data.rows.slice(0,remaining);
