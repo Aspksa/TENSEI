@@ -356,6 +356,19 @@ $('recognize').onclick=async()=>{
   }
   state.busy=true;drawQueue();$('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
   const batch=[...state.queue];state.queue=[];
+  const batchStates=batch.map(file=>({file,status:'В очереди',kind:'queued'}));
+  const batchBox=$('batchStatus');
+  const updateBatch=(index,phase,kind)=>{
+    batchStates[index].status=phase;batchStates[index].kind=kind;
+    batchBox.replaceChildren();
+    batchStates.forEach(entry=>{
+      const node=document.createElement('div');node.className='batch-status-item '+entry.kind;node.setAttribute('role','listitem');
+      const name=document.createElement('strong');name.textContent=entry.file.name;
+      const label=document.createElement('span');label.textContent=entry.status;
+      node.append(name,label);batchBox.append(node);
+    });
+  };
+  if(batch.length)updateBatch(0,'Ожидает обработки','queued');
   const failed=[],failures=new Set();
   let done=0,usedModel='';
   let activePhase='Обработка';
@@ -370,12 +383,13 @@ $('recognize').onclick=async()=>{
   const jokeTimer=setInterval(drawJoke,4500);
   const updateSteps=step=>{const nodes=[...$('photoStatusSteps').children];nodes.forEach((node,i)=>{node.classList.toggle('active',i===step);node.classList.toggle('completed',i<step)});};
   updateSteps(0);
-  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
+  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';if(done<batchStates.length)updateBatch(done,activePhase,'active');const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
   try{
     for(const [index,file] of batch.entries()){
       $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
       $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
       showPreview(file);
+      updateBatch(index,'Подготовка фотографии','active');
       activePhase='Подготовка фотографии';drawJoke();
       try{
         const result=await api('recognize',{image:await fileData(file),name:file.name,
@@ -393,10 +407,11 @@ $('recognize').onclick=async()=>{
           $('comparisonText').textContent=result.comparison.raw;
         }
         done++;
+        updateBatch(index,result.cached?'Готово · из кэша':'Готово · '+(result.rows?.length||0)+' строк','done');
         updateSteps(4);
         updateRecords();
         await refreshTasks().catch(()=>{});
-      }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
+      }catch(e){failed.push(file);failures.add(e.message);updateBatch(index,'Ошибка · '+e.message.slice(0,100),'error');await refreshTasks().catch(()=>{})}
     }
     state.queue.push(...failed);
     $('progressBar').style.width='100%';
