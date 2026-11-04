@@ -42,6 +42,20 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     const added=await r.json();assert.ok(added.template.id.startsWith('user-'));
     r=await fetch(url+'/api/templates');assert.ok((await r.json()).templates.some(x=>x.id===added.template.id));
     r=await fetch(url+'/api/tasks');assert.equal(r.status,200);assert.deepEqual((await r.json()).tasks,[]);
+    r=await fetch(url+'/api/ai-monitor');assert.equal(r.status,200);
+    assert.equal((await r.json()).estimatedCostRub,null);
+    r=await fetch(url+'/api/approved-memory');assert.equal(r.status,200);
+    assert.deepEqual((await r.json()).vehicles,[]);
+    r=await fetch(url+'/api/approved-memory',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({vehicles:['А123'],drivers:['Иван']})});
+    assert.equal(r.status,400);
+    r=await fetch(url+'/api/approved-memory',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({confirmed:true,vehicles:['А123'],drivers:['Иван']})});
+    assert.equal(r.status,200);
+    r=await fetch(url+'/api/approved-memory');assert.equal(r.status,200);
+    assert.deepEqual((await r.json()).vehicles,['А123']);
     r=await fetch(url+'/analytics');assert.equal(r.status,200);assert.match(await r.text(),/Аналитика перевозок/);
     r=await fetch(url+'/analytics.js');assert.equal(r.status,200);
     r=await fetch(url+'/api/photo-report/0123456789abcdef01234567');assert.equal(r.status,404);
