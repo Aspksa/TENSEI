@@ -370,7 +370,7 @@ $('recognize').onclick=async()=>{
   };
   if(batch.length)updateBatch(0,'Ожидает обработки','queued');
   const failed=[],failures=new Set();
-  let done=0,usedModel='';
+  let done=0,usedModel='',activeIndex=0;
   let activePhase='Обработка';
   const nextJoke=createHumorRotator();
   const drawJoke=()=>{
@@ -383,9 +383,10 @@ $('recognize').onclick=async()=>{
   const jokeTimer=setInterval(drawJoke,4500);
   const updateSteps=step=>{const nodes=[...$('photoStatusSteps').children];nodes.forEach((node,i)=>{node.classList.toggle('active',i===step);node.classList.toggle('completed',i<step)});};
   updateSteps(0);
-  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';if(done<batchStates.length)updateBatch(done,activePhase,'active');const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
+  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';if(activeIndex<batchStates.length)updateBatch(activeIndex,activePhase,'active');const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((activeIndex+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(activeIndex+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
   try{
     for(const [index,file] of batch.entries()){
+      activeIndex=index;
       $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
       $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
       showPreview(file);
