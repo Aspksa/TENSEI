@@ -35,8 +35,8 @@ async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.r
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,autoPipeline:o.autoPipeline!==false,costMode:['off','auto','economy','balanced','quality'].includes(o.costMode)?o.costMode:'auto',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,autoPipeline:true,costMode:'auto',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,autoPipeline:o.autoPipeline!==false,digitCellOcr:o.digitCellOcr===true,costMode:['off','auto','economy','balanced','quality'].includes(o.costMode)?o.costMode:'auto',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,autoPipeline:true,digitCellOcr:false,costMode:'auto',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -102,7 +102,9 @@ async function recognize(input){
     return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
       warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
       comparison:previous.comparison||null,mineruTask:previous.mineruTask||null,
-      usage:previous.usage||null,reportId:previous.id||null};
+      usage:previous.usage||null,photoGroup:previous.photoGroup||null,
+      missingRows:previous.missingRows||null,documentHint:previous.documentHint||null,
+      digitCells:previous.digitCells||null,reportId:previous.id||null};
   }
   const id=createHash('sha256').update(strategyHash+Date.now()).digest('hex').slice(0,24);
   const task={id,name:String(input.name||'Фото').slice(0,160),hash:strategyHash,templateId:template.id,
@@ -214,7 +216,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
-        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,gridSegmentation:cfg.gridSegmentation,autoPipeline:cfg.autoPipeline,
+        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,gridSegmentation:cfg.gridSegmentation,autoPipeline:cfg.autoPipeline,digitCellOcr:cfg.digitCellOcr,
         costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -228,7 +230,8 @@ const server=http.createServer(async(req,res)=>{
         paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
         localText:payload.localText===true,localVl:payload.localVl===true,cvPreprocess:payload.cvPreprocess===true,
         gridSegmentation:payload.gridSegmentation===true,autoPipeline:payload.autoPipeline===true,
-        costMode:['off','auto','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
+        digitCellOcr:payload.digitCellOcr===true,
+        costMode:['off','auto','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'auto',
         maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
     }
@@ -270,6 +273,19 @@ const server=http.createServer(async(req,res)=>{
       const memory=normalizeMemory(payload);
       await writeJson(memoryPath,memory);
       return send(res,200,{ok:true,vehicles:memory.vehicles.length,drivers:memory.drivers.length});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/photo-groups'){
+      const completed=(await tasks()).filter(x=>x.status==='done');
+      const groups=new Map();
+      for(const t of completed){
+        const info=t.photoGroup||photoBatchMetadata(t.name,t.rows,t.startedAt);
+        const key=info.groupKey||'undated';
+        if(!groups.has(key))groups.set(key,{groupKey:key,files:0,rows:0,items:[]});
+        const group=groups.get(key);group.files++;group.rows+=t.rows?.length||0;
+        group.items.push({id:t.id,name:t.name,sourceId:t.sourceId,
+          dateSource:info.dateSource,needsReview:info.requiresDateReview});
+      }
+      return send(res,200,{groups:[...groups.values()].sort((a,b)=>a.groupKey.localeCompare(b.groupKey))});
     }
     if(req.method==='GET'&&url.pathname==='/api/tasks'){
       return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
