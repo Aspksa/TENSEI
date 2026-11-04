@@ -556,6 +556,9 @@ $('recognize').onclick=async()=>{
     $('progressBar').style.width='100%';
     updateSteps(failed.length?3:4);
     $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
+    $('uploadFeedback').textContent=failed.length?
+      'Обработано '+done+' из '+batch.length+'. Ошибочные файлы остались в очереди — подробности ниже.':
+      'Готово: '+done+' фото. Проверьте строки в таблице, затем скачайте Excel.';
     if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
     else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
   }finally{
