@@ -81,7 +81,7 @@ test('actual cloud retries and token usage are recorded for every response',asyn
     const out=await processPhoto({image,name:'retry.png',
       cfg:{key:'fake',model:'qwen/qwen3-vl-235b-a22b-instruct',
         fallback:false,cropRecovery:false,enhance:false,paddle:false,chandra:false,costMode:'off'},
-      template:{columns:['Нетто']},telemetry:event=>events.push(event)});
+      template:{columns:['Номер ТС','Нетто']},telemetry:event=>events.push(event)});
     assert.equal(out.cloudCalls,2);
     assert.equal(out.modelUsage.length,2);
     assert.equal(out.usage.total_tokens,200);
@@ -98,7 +98,7 @@ test('failed cloud answer still emits attempted calls and model token usage',asy
     await assert.rejects(()=>processPhoto({image,name:'failure.png',
       cfg:{key:'fake',model:'qwen/qwen3-vl-8b-instruct',
         fallback:false,cropRecovery:false,enhance:false,paddle:false,chandra:false,costMode:'economy',maxCloudCalls:1},
-      template:{columns:['Нетто']},telemetry:event=>events.push(event)}),/finish_reason/);
+      template:{columns:['Номер ТС','Нетто']},telemetry:event=>events.push(event)}),/finish_reason/);
     assert.equal(events.at(-1).cloudCalls,1);
     assert.equal(events.at(-1).usage.total_tokens,100);
     assert.equal(events.at(-1).modelUsage.length,1);
