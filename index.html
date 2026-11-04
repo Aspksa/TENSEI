@@ -103,12 +103,12 @@
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button>
               </div>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
-              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
+              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
-              <div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
-              <div class="preview-surface">
-                <img id="previewImage" alt="Выбранная фотография" hidden>
+              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
+              <div class="preview-surface" id="previewSurface">
+                <img id="previewImage" alt="Выбранная фотография" hidden><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>
               </div>
             </div>
@@ -148,7 +148,7 @@
           <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
         </div>
       </section>
-      <details id="auditDetails" class="audit card">
+      <details id="comparisonDetails" class="audit card" hidden><summary>Дополнительное чтение Chandra OCR 2</summary><p class="help">Результат Chandra нужно сопоставлять с фотографией вручную.</p><pre id="comparisonText" class="comparison-raw"></pre></details><details id="auditDetails" class="audit card">
         <summary><span>Ошибки и сомнительные записи</span><span id="auditCount" class="count-chip">0</span></summary>
         <div id="auditList" class="audit-list"></div>
       </details>
