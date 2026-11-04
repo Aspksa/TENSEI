@@ -67,6 +67,14 @@ test('visible settings save API key, check model and edit a journal row',async()
     assert.ok(field,'journal row has editable input');
     field.value='а123вс';field.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
     assert.ok(dom.window.document.body.textContent.includes('на проверку'));
+    const confirmBox=dom.window.document.querySelector('input[aria-label="Строка 1 сверена с фотографией"]');
+    assert.ok(confirmBox);
+    confirmBox.checked=true;
+    confirmBox.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+    const edited=dom.window.document.querySelector('input[aria-label="Номер ТС; строка 1"]');
+    edited.value='а124вс';
+    edited.dispatchEvent(new dom.window.Event('change',{bubbles:true}));
+    assert.equal(dom.window.document.querySelector('input[aria-label="Строка 1 сверена с фотографией"]').checked,false,'editing must revoke manual review before automatic Excel');
     await until(()=>draftWrites>=1,2600);
     assert.deepEqual(errors,[]);
   }finally{
