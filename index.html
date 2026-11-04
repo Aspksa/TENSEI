@@ -1,34 +1,42 @@
 <!doctype html>
-<html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10131a"><title>TENSEI — умный реестр</title><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script></head>
-<body><div class="shell">
-<aside class="side">
-  <div class="identity"><div class="emblem">天</div><div><strong>TENSEI</strong><small>Умный реестр · 0.2</small></div></div>
-  <div class="navlabel">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-  <nav aria-label="Основное меню">
-    <button class="nav active" data-page="workspace"><span>✦</span> Распознавание</button>
-    <button class="nav" data-page="journal"><span>▤</span> Реестр <b id="sideCount">0</b></button>
-    <button class="nav" data-page="audit"><span>◇</span> Проверка <b id="sideIssues">0</b></button>
-    <button class="nav" data-page="settings"><span>⚙</span> Подключение ИИ</button>
-  </nav>
-  <div class="sidefoot"><div class="live"></div><div><strong>Локальная программа</strong><small>Черновик хранится на этом диске</small></div></div>
-</aside>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0c1119"><title>TENSEI — распознавание журналов</title>
+<link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script></head>
+<body><div class="app">
+<header class="header"><div class="brand"><span class="brandmark">T</span><span>TENSEI<small>Рукописные журналы</small></span></div>
+<nav class="nav" aria-label="Разделы программы">
+<button data-page="workspace" class="active">Распознавание</button>
+<button data-page="journal">Таблица <span id="sideCount" class="counter">0</span></button>
+<button data-page="audit">Проверка <span id="sideIssues" class="counter">0</span></button>
+<button data-page="settings">Настройки</button></nav>
+<span class="connection" id="connection">Ключ не проверен</span></header>
 <main class="main">
-  <header class="top"><div><span class="eyebrow">TENSEI / ДОКУМЕНТЫ</span><h1 id="pageTitle">Распознавание фотографий</h1></div><div class="state" id="connection">○ Проверка Cloud.ru</div></header>
-  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-  <section id="workspace" class="page">
-    <div class="hero"><span class="eyebrow gold">ОТ ФОТОГРАФИИ ДО ГОТОВОГО ОТЧЁТА</span><h2>Рукописный журнал.<br><em>Цифровой порядок.</em></h2><p>Распознавайте номера машин, вес и время. Все сомнительные записи попадут на проверку перед выгрузкой в Excel.</p><div class="steps"><span><b>01</b> Загрузка</span><span><b>02</b> Распознавание</span><span><b>03</b> Контроль</span><span><b>04</b> Excel</span></div></div>
-    <div class="metrics">
-      <div class="metric"><small>СТРОК В РЕЕСТРЕ</small><strong id="statRows">0</strong><span>всего записей</span></div>
-      <div class="metric"><small>ТРЕБУЮТ ПРОВЕРКИ</small><strong id="statIssues">0</strong><span>неоднозначных строк</span></div>
-      <div class="metric"><small>СУММАРНОЕ НЕТТО</small><strong id="statTons">0,000 <i>т</i></strong><span>по извлечённым данным</span></div>
-    </div>
-    <div class="columns"><div class="panel"><div class="panelhead"><div><span class="eyebrow">ИСТОЧНИКИ</span><h3>Загрузка изображений</h3></div><span class="pill">до 20 МБ / файл</span></div>
-      <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Выберите или перетащите фотографии"><div class="upload-symbol">⇧</div><strong>Перетащите сюда фотографии</strong><p>или нажмите, чтобы выбрать файлы</p><small>JPG · PNG · WEBP · TIFF · GIF · BMP · AVIF · SVG · HEIC*</small></div>
-      <input id="photos" type="file" hidden multiple accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg"><div id="fileList" class="file-list"></div><div class="actions"><button class="primary" id="run">✦ Распознать все</button><button class="secondary" id="showJournal">Открыть реестр</button></div><div id="progressText" class="hint">Добавьте одну или несколько фотографий.</div><div class="progress"><div id="progressBar"></div></div>
-    </div><div class="panel"><div class="panelhead"><div><span class="eyebrow">ПРОСМОТР</span><h3>Исходная фотография</h3></div></div><div class="imagearea"><img id="preview" alt="Предпросмотр выбранного изображения" hidden><span id="previewEmpty">Фотография появится здесь<br>после выбора файла</span></div><p class="hint">Перед экспортом проверяйте исходный журнал. ИИ может ошибаться на сложном почерке.</p></div></div>
-  </section>
-  <section id="journal" class="page" hidden><div class="panel"><div class="panelhead"><div><span class="eyebrow">РЕДАКТОР ДАННЫХ</span><h3>Реестр взвешиваний</h3></div><div class="actions"><button class="secondary" id="addRow">+ Строка</button><button class="primary" id="download">↓ Скачать Excel</button></div></div><div class="toolbar"><label class="search-label">Поиск <input id="search" placeholder="Номер ТС, водитель, время..."></label><label class="checkline"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label></div><div class="table-scroll"><table><thead><tr><th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Источник</th><th>Сверено с фото</th><th>Проверка</th><th></th></tr></thead><tbody id="tableBody"></tbody></table></div><div class="table-bottom"><span id="tableSummary">0 записей</span><button class="danger" id="clear">Очистить реестр</button></div></div></section>
-  <section id="audit" class="page" hidden><div class="panel"><div class="panelhead"><div><span class="eyebrow">КОНТРОЛЬ КАЧЕСТВА</span><h3>Замечания и аномалии</h3></div><span id="auditBadge" class="pill">0 замечаний</span></div><div id="auditList" class="audit-list"></div><p class="hint">Дубли помечаются, но не удаляются: одна машина может совершать несколько рейсов. Проверка не заменяет сверку с фотографией.</p></div></section>
-  <section id="settings" class="page" hidden><div class="panel settings"><span class="eyebrow">ОБЛАЧНАЯ МОДЕЛЬ</span><h3>Подключение Cloud.ru</h3><p class="hint">Введите API-ключ один раз. Он будет храниться локально в папке data на внешнем диске. Изображения отправляются в Cloud.ru.</p><label>API-ключ <input id="key" type="password" autocomplete="new-password" placeholder="Введите новый ключ (не показывается в браузере)"></label><label>Модель распознавания<select id="model"><option value="qwen/qwen3-vl-235b-a22b-instruct">Qwen3 VL 235B A22B — основная</option><option value="qwen/qwen3-vl-30b-a3b-instruct">Qwen3 VL 30B A3B — экономичная</option><option value="qwen/qwen3-vl-8b-instruct">Qwen3 VL 8B — быстрая</option></select></label><div class="actions"><button id="save" class="primary">Сохранить настройки</button><span class="hint" id="saved"></span></div><p class="hint">При ошибке «модель недоступна» проверьте точный ID и доступ в вашем аккаунте Cloud.ru.</p></div></section>
+<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+<section class="page" id="workspace"><div class="pagehead"><div><h1 id="pageTitle">Распознавание</h1><p>Загрузите фотографии журнала — получите таблицу для Excel.</p></div></div>
+<div class="workspace">
+<article class="panel"><div class="panelhead"><h2>Фотографии</h2><span class="subtle">До 20 МБ на файл</span></div>
+<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Выберите или перетащите фотографии">
+<div class="uploadicon">↑</div><strong>Перетащите сюда фотографии</strong><span>или нажмите для выбора</span>
+<small>JPG · PNG · WebP · TIFF · BMP · GIF · AVIF · SVG</small></div>
+<input type="file" id="photos" hidden multiple accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg">
+<div id="fileList" class="file-list"></div>
+<div class="actions"><button id="run" class="primary">Распознать фотографии</button><button id="showJournal" class="secondary">Открыть таблицу</button></div>
+<div class="progress"><div id="progressBar"></div></div><p class="help" id="progressText">Фотографии не выбраны.</p>
+</article>
+<article class="panel preview-panel"><div class="panelhead"><h2>Просмотр</h2><span class="subtle">Оригинал документа</span></div>
+<div class="imagearea"><img id="preview" hidden alt="Предпросмотр фотографии"><span id="previewEmpty">Здесь появится выбранная фотография</span></div>
+<div class="summary"><div><strong id="statRows">0</strong><span>строк</span></div><div><strong id="statIssues">0</strong><span>на проверку</span></div><div><strong id="statTons">0,000 т</strong><span>нетто</span></div></div></article>
+</div><p class="footerhint">Неуверенные значения помечаются для проверки. Оригиналы фотографий сверяйте перед выгрузкой.</p></section>
+<section class="page" id="journal" hidden><div class="pagehead"><div><h1>Таблица</h1><p>Исправьте распознанные данные и скачайте Excel.</p></div><div class="actions"><button id="addRow" class="secondary">+ Добавить строку</button><button id="download" class="primary">Скачать Excel</button></div></div>
+<article class="panel"><div class="toolbar"><label>Поиск <input id="search" type="search" placeholder="Автомобиль, водитель, время"></label><label class="inline-check"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label></div>
+<div class="table-scroll"><table><thead><tr><th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Источник</th><th>Сверено</th><th>Проверка</th><th></th></tr></thead><tbody id="tableBody"></tbody></table></div>
+<div class="tablebottom"><span id="tableSummary">0 строк</span><button id="clear" class="textbutton">Очистить таблицу</button></div></article></section>
+<section class="page" id="audit" hidden><div class="pagehead"><div><h1>Проверка</h1><p>Записи, в которых обнаружены возможные ошибки.</p></div><span id="auditBadge" class="pill">0</span></div><div id="auditList" class="audit-list"></div></section>
+<section class="page" id="settings" hidden><div class="pagehead"><div><h1>Настройки</h1><p>Подключение к Cloud.ru и выбор модели для фотографий.</p></div></div>
+<article class="panel settings"><label>API-ключ Cloud.ru<input id="key" type="password" autocomplete="new-password" placeholder="Введите ключ — сохранится только на вашем диске"></label>
+<label>Модель<select id="model"><option value="qwen/qwen3-vl-235b-a22b-instruct">Qwen3 VL 235B — основная</option></select></label>
+<label class="inline-check"><input id="fallback" type="checkbox" checked> Если модель недоступна, попробовать резервную</label>
+<div class="actions"><button id="save" class="primary">Сохранить</button><button id="checkConnection" class="secondary">Проверить доступ</button></div>
+<p id="saved" class="help"></p><div id="connectionDetails" class="diagnostic" hidden></div>
+<p class="help">Наличие ключа не означает, что модель доступна. Проверка запрашивает список моделей через API Cloud.ru без отправки фотографии.</p></article></section>
 </main></div></body></html>
