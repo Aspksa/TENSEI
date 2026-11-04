@@ -58,28 +58,43 @@ test('end-to-end Legion: upload XLSX master, CP1251 CSV, auto group, Excel repor
     assert.equal(preview.sample.filter(x=>x.plate==='А905УО').length,2);
     const id=preview.importId;
     resp=await post(svc.url,'generate',{importId:id,coefficient:1.55});
+    assert.equal(resp.status,400,'unknown vehicles must block final reports');
+    resp=await post(svc.url,'vehicle',{plate:'С301СВ',model:'КамАЗ',driver:'Оператор Б'});
+    assert.equal(resp.status,200);
+    resp=await post(svc.url,'generate',{importId:id,coefficient:1.55});
     assert.equal(resp.status,200,JSON.stringify(resp.body));
+    assert.ok(resp.body.reconciliation.matches);
+    assert.match(resp.body.overview,/сводный/);
     assert.equal(resp.body.files.length,2);
     assert.equal(resp.body.files[0].count,2);
     assert.equal(resp.body.files[0].tonnes,55.24);
     assert.equal(resp.body.files[1].count,1);
     assert.equal(resp.body.files[1].tonnes,30);
     const output=await readdir(svc.out);
-    assert.equal(output.filter(x=>x.endsWith('.xlsx')).length,2);
+    assert.equal(output.filter(x=>x.endsWith('.xlsx')).length,3);
     assert.equal(output.filter(x=>x.endsWith('.zip')).length,1);
     const zipResponse=await fetch(svc.url+'/api/legion/download/'+resp.body.reportId);
     assert.equal(zipResponse.status,200);
     const zipper=await JSZip.loadAsync(Buffer.from(await zipResponse.arrayBuffer()));
     const files=Object.values(zipper.files).filter(x=>x.name.endsWith('.xlsx'));
-    assert.equal(files.length,2);
-    const report=new ExcelJS.Workbook();await report.xlsx.load(await files[0].async('nodebuffer'));
+    assert.equal(files.length,3);
+    const overviewFile=files.find(x=>x.name.includes('сводный'));
+    const overview=new ExcelJS.Workbook();await overview.xlsx.load(await overviewFile.async('nodebuffer'));
+    assert.ok(overview.getWorksheet('По дням'));
+    assert.ok(overview.getWorksheet('По месяцам'));
+    assert.ok(overview.getWorksheet('По автомобилям'));
+    assert.ok(overview.getWorksheet('По товарам'));
+    assert.ok(overview.getWorksheet('Контроль ошибок'));
+    assert.equal(overview.getWorksheet('Параметры').getCell('B2').value,1.55);
+    const individual=files.filter(x=>x!==overviewFile);
+    const report=new ExcelJS.Workbook();await report.xlsx.load(await individual[0].async('nodebuffer'));
     const sht=report.getWorksheet('Отчёт');
     assert.equal(sht.getCell('D5').value,'Самосвал FAW');
     assert.equal(sht.getCell('J5').value.formula,'H5/I5');
     assert.ok(Math.abs(sht.getCell('J5').value.result-27.24/1.55)<1e-7);
-    const second=new ExcelJS.Workbook();await second.xlsx.load(await files[1].async('nodebuffer'));
-    assert.equal(second.getWorksheet('Отчёт').getCell('D5').value,'НЕТ В БАЗЕ');
-    assert.equal(second.getWorksheet('Отчёт').getCell('F5').value,'НЕТ В БАЗЕ');
+    const second=new ExcelJS.Workbook();await second.xlsx.load(await individual[1].async('nodebuffer'));
+    assert.equal(second.getWorksheet('Отчёт').getCell('D5').value,'КамАЗ');
+    assert.equal(second.getWorksheet('Отчёт').getCell('F5').value,'Оператор Б');
     const masterRes=await fetch(svc.url+'/api/legion/master');
     assert.equal(masterRes.status,200);
     const master=new ExcelJS.Workbook();await master.xlsx.load(Buffer.from(await masterRes.arrayBuffer()));
@@ -96,5 +111,30 @@ test('reject malformed CSV, unsafe vehicle codes and foreign origins',async()=>{
     assert.equal(resp.status,400);
     const origin=await fetch(svc.url+'/api/legion/base',{headers:{Origin:'https://evil.example'}});
     assert.equal(origin.status,403);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});
+
+test('batch CSV detects repeated trips and blocks final Excel until errors resolved',async()=>{
+  const svc=await serverStart();
+  try{
+    const plain='ТС;Товар;Дата оформления;Нетто;№\nА905УО;Скала;01.11.2026 12:00;20000;100\n';
+    let resp=await post(svc.url,'import-batch',{files:[
+      {name:'one.csv',file:'data:text/csv;base64,'+Buffer.from(plain).toString('base64')},
+      {name:'two.csv',file:'data:text/csv;base64,'+Buffer.from(plain).toString('base64')}
+    ]});
+    assert.equal(resp.status,200,JSON.stringify(resp.body));
+    assert.equal(resp.body.count,2);
+    assert.equal(resp.body.audit.duplicates.length,1);
+    assert.equal(resp.body.batchDuplicates.length,1);
+    assert.equal(resp.body.audit.ready,false);
+    const id=resp.body.importId;
+    resp=await post(svc.url,'vehicle',{plate:'А905УО',model:'FAW',driver:'Оператор'});
+    assert.equal(resp.status,200);
+    resp=await post(svc.url,'generate',{importId:id,coefficient:'1,55'});
+    assert.equal(resp.status,400);
+    assert.match(resp.body.error,/повторные рейсы/);
+    const again=await fetch(svc.url+'/api/legion/import/'+id);
+    const restored=await again.json();
+    assert.equal(restored.audit.duplicates.length,1);
   }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
 });
