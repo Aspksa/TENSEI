@@ -52,3 +52,10 @@ test('поломанные или чрезмерные ответы отверг
   assert.throws(()=>safeRows({rows:[]}),/количество/);
   assert.throws(()=>safeRows(new Array(2501).fill({})),/количество/);
 });
+
+test('модель не может сама подтвердить сверку с фото',()=>{
+  const row=parseModel('{"rows":[{"vehicle":"A123","reviewed":true,"net":24000}]}')[0];
+  assert.equal(row.reviewed,false);
+  const manuallyReviewed=examine([{vehicle:'A123',net:24000,uncertain:true,reviewed:true}])[0];
+  assert.equal(manuallyReviewed.issues.length,0);
+});
