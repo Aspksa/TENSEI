@@ -62,3 +62,11 @@ tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 #settings>details:not([open]){background:#f8fafc}
 #reviewIssues{font-size:12px}
 @media(max-width:700px){.photo-status-steps span{font-size:10px;padding:4px 6px}.template-options{margin:10px}}
+
+.batch-status{display:grid;gap:6px;margin:10px 0}
+.batch-status-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:9px;border:1px solid #dee6ee;background:#fafcff;font-size:12px}
+.batch-status-item strong{max-width:55%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.batch-status-item span{font-size:11px;color:#5a6979;text-align:right}
+.batch-status-item.active{border-color:#71abe1;background:#edf6ff}
+.batch-status-item.done{border-color:#8bd1a1;background:#f0faf3}
+.batch-status-item.error{border-color:#f0a2a2;background:#fff1f1}
