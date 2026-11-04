@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 import uvicorn
-from grid_geometry import detect_grid, detect_text_bands
+from grid_geometry import detect_grid, detect_text_bands, detect_crossout_candidates
 from cell_cache import cache_key,read_cache,write_cache
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
@@ -193,6 +193,16 @@ def segment_grid(photo: Photo):
             raise
         raise HTTPException(status_code=422, detail=str(exc)[:350])
 
+
+
+@app.post("/crossout-candidates")
+def crossout_candidates(photo: Photo):
+    try:
+        return detect_crossout_candidates(decode_photo(photo))
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
 
 @app.post("/ocr")
