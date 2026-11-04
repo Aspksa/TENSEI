@@ -27,13 +27,22 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
   try{
     let r=await fetch(url+'/');
     assert.equal(r.status,200);
-    assert.match(await r.text(),/TENSEI/);
+    const home=await r.text();
+    assert.match(home,/TENSEI/);
+    assert.match(home,/Проверка и реестр/);
+    assert.match(home,/photoStatusSteps/);
+    assert.match(home,/humorCaption/);
+    assert.match(home,/autoExcel/);
+    assert.match(home,/autoPipeline/);
+    assert.match(home,/Авто — локально/);
     for(const file of ['app.js','styles.css','humor-messages.js']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
     r=await fetch(url+'/api/settings');
     assert.equal(r.status,200);
     const settings=await r.json();
     assert.equal(settings.model,'qwen/qwen3-vl-235b-a22b-instruct');
     assert.equal(settings.models.length,5);
+    assert.equal(settings.costMode,'auto');
+    assert.equal(settings.autoPipeline,true);
     r=await fetch(url+'/api/templates');assert.equal(r.status,200);
     assert.ok((await r.json()).templates.length>=2);
     r=await fetch(url+'/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
