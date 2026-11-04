@@ -28,7 +28,7 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     let r=await fetch(url+'/');
     assert.equal(r.status,200);
     assert.match(await r.text(),/TENSEI/);
-    for(const file of ['app.js','styles.css']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
+    for(const file of ['app.js','styles.css','humor-messages.js']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
     r=await fetch(url+'/api/settings');
     assert.equal(r.status,200);
     const settings=await r.json();

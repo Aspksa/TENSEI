@@ -28,6 +28,7 @@ jobs:
         run: |
           node --check server.mjs
           node --check app.js
+          node --check humor-messages.js
           node --check analytics.js
           node --check lib/cloud.mjs
           node --check lib/workflow.mjs
