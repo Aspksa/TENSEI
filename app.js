@@ -608,6 +608,7 @@ async function initialize(){
     $('costMode').value=cfg.costMode||'auto';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
+    if(!state.hasKey)$('settingsDetails').open=true;
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey
       ?'Ключ уже сохранён на диске. Для замены введите новый, затем нажмите «Сохранить».'
