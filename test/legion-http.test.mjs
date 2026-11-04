@@ -180,7 +180,7 @@ test('photo draft and Legion CSV produce a read-only reconciled ledger',async()=
 test('unified fleet API combines repeated Legion imports and photo evidence without double counting',async()=>{
   const svc=await serverStart();
   try{
-    const csv='ТС;Товар;Дата оформления;Нетто;№\\nА905УО;Скала;05.11.2026 12:30;27000;1001\\n';
+    const csv='ТС;Товар;Дата оформления;Нетто;№\nА905УО;Скала;05.11.2026 12:30;27000;1001\n';
     const payload={name:'sample.csv',file:'data:text/csv;base64,'+Buffer.from(csv).toString('base64')};
     let res=await post(svc.url,'import-csv',payload);
     assert.equal(res.status,200,JSON.stringify(res.body));
