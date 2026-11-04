@@ -4,7 +4,7 @@ import {DEFAULT_MODEL,MODELS,weight,normalize,parseModel,examine,safeRows} from 
 
 test('основная модель назначена заранее',()=>{
   assert.equal(DEFAULT_MODEL,'qwen/qwen3-vl-235b-a22b-instruct');
-  assert.equal(MODELS.length,3);
+  assert.equal(MODELS.length,5);
 });
 test('обработка пустых и числовых значений',()=>{
   assert.equal(weight(null),null);
