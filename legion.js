@@ -64,8 +64,9 @@ function readAsDataURL(file){
 async function refreshBase(){
   const result=await api('base',undefined,'GET');
   state.vehicles=Array.isArray(result.vehicles)?result.vehicles:[];
-  $('legionBaseStatus').textContent='В справочнике '+state.vehicles.length+
-    ' автомобилей. Для новых номеров нужно указать модель и водителя.';
+  $('legionBaseStatus').textContent=state.vehicles.length?
+    'В базе ТС '+state.vehicles.length+' автомобилей. Для новых номеров укажите модель и водителя.':
+    'База ТС пока пустая. Импортируйте ваш мастер XLSX или заполните автомобиль вручную. Отчёт без базы покажет «НЕТ В БАЗЕ».';
   drawBase();
   return state.vehicles;
 }
@@ -158,6 +159,7 @@ function showUnknown(unknown){
 }
 function drawPreview(result){
   state.preview=result;state.importId=result.importId;
+  if($('legionZeroInfo'))$('legionZeroInfo').hidden=true;
   $('legionStatTrips').textContent=result.count||0;
   $('legionStatTons').textContent=formatTons(result.summary?.tonnes||0);
   $('legionStatProducts').textContent=result.groups?.length||0;
@@ -289,6 +291,19 @@ function initLegionTooltips(){
     ['legionBaseList','Нажмите на машину в списке, чтобы заполнить поля редактирования.']
   ];
   for(const [id,text] of sections)if($(id))$(id).title=text;
+  const panels=[
+    ['CSV с карьера','Источник: CSV карьера, без нейросети. Из него берутся дата, номер ТС, товар и вес нетто.'],
+    ['Распределение и проверка','Рейсы группируются по точному написанию товара и дате. Неизвестные машины ищутся в локальной Базе ТС.'],
+    ['Готовые отчёты','Готовые XLSX и общий ZIP на диске TENSEI; старые файлы сохраняются по уникальному времени создания.'],
+    ['База автомобилей','Марка и водитель берутся только отсюда, CSV используется для веса, даты и товара.']
+  ];
+  for(const heading of document.querySelectorAll('.legion-card-header h2')){
+    const match=panels.find(x=>x[0]===heading.textContent.trim());
+    if(!match)continue;
+    const icon=document.createElement('span');icon.className='help-dot';icon.textContent='?';
+    icon.title=match[1];icon.setAttribute('role','img');
+    icon.setAttribute('aria-label','Подсказка: '+match[1]);heading.append(' ',icon);
+  }
 }
 
 async function initLegion(){
