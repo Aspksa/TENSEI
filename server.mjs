@@ -13,6 +13,7 @@ import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
+import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -25,8 +26,8 @@ const photoReportsDir=path.join(dataDir,'photo-reports');
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -85,15 +86,17 @@ async function recognize(input){
   const templates=[...BUILTIN_TEMPLATES,...await savedTemplates()];
   const template=templates.find(t=>t.id===String(input.templateId||'weights'))||BUILTIN_TEMPLATES[0];
   const hash=identity(input,cfg,template);
-  const previous=(await tasks()).find(x=>x.hash===hash&&x.status==='done'&&Array.isArray(x.rows));
+  // The exact cache key includes cost mode and request budget to avoid stale strategy reuse.
+  const strategyHash=createHash('sha256').update(hash).update(cfg.costMode).update(String(cfg.maxCloudCalls)).digest('hex');
+  const previous=(await tasks()).find(x=>x.hash===strategyHash&&x.status==='done'&&Array.isArray(x.rows));
   if(previous&&!input.force){
     return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
       warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
       comparison:previous.comparison||null,mineruTask:previous.mineruTask||null,
       usage:previous.usage||null,reportId:previous.id||null};
   }
-  const id=createHash('sha256').update(hash+Date.now()).digest('hex').slice(0,24);
-  const task={id,name:String(input.name||'Фото').slice(0,160),hash,templateId:template.id,
+  const id=createHash('sha256').update(strategyHash+Date.now()).digest('hex').slice(0,24);
+  const task={id,name:String(input.name||'Фото').slice(0,160),hash:strategyHash,templateId:template.id,
     model:cfg.model,status:'processing',phase:'Загрузка принята',progress:10,trace:[],attempts:0,startedAt:new Date().toISOString()};
   const stages={'Подготовка изображения':20,'PaddleOCR: анализ ячеек':35,'Cloud.ru: анализ страницы':55,'Страница не прочиталась — распознаю увеличенные части':65,'Chandra OCR: независимое чтение':78,'MinerU: создание задачи для независимого разбора':88,'Формирование результата':93};
   const trace=[];
@@ -107,7 +110,9 @@ async function recognize(input){
     await fs.mkdir(sourceDir,{recursive:true});
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
+    const similar=(await tasks()).filter(t=>t.status==='done'&&t.imageHash&&hashDistance(t.imageHash,result.imageHash)<=4).slice(0,3).map(t=>({id:t.id,name:t.name}));
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+      imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
       usage:result.usage||null,fallbackFrom:result.fallbackFrom||null,reportId:id};
@@ -118,6 +123,7 @@ async function recognize(input){
       finishedAt:new Date().toISOString(),status:'done',model:result.model,
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,trace:[...trace],warnings:result.warnings,
+      similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,rows:result.rows,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
@@ -184,7 +190,8 @@ const server=http.createServer(async(req,res)=>{
     if(url.pathname.startsWith('/api/legion/'))return await handleLegion(req,res,url);
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
-        cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru});
+        cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
+        costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
       const payload=await json(req),previous=await settings();
@@ -194,7 +201,9 @@ const server=http.createServer(async(req,res)=>{
       if(key.length>2048)throw Error('API-ключ слишком длинный');
       await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false,
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
-        paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true});
+        paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
+        costMode:['off','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
+        maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
     }
     if(req.method==='GET'&&url.pathname==='/api/connection'){
