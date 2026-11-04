@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 import uvicorn
-from grid_geometry import detect_grid, detect_text_bands
+from grid_geometry import detect_grid, detect_text_bands, detect_crossout_candidates
+from cell_cache import cache_key,read_cache,write_cache
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
@@ -194,6 +195,16 @@ def segment_grid(photo: Photo):
 
 
 
+@app.post("/crossout-candidates")
+def crossout_candidates(photo: Photo):
+    try:
+        return detect_crossout_candidates(decode_photo(photo))
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
+
+
 @app.post("/ocr")
 def recognize_lines(photo: Photo):
     """Advisory local text lines, not a verified weighbridge table."""
@@ -282,9 +293,11 @@ def recognize_digit_cells(photo: Photo):
                 ratio = min(4, 80 / max(1, crop.shape[0]))
                 crop = cv2.resize(crop, None, fx=ratio, fy=ratio,
                                   interpolation=cv2.INTER_CUBIC)
-            key = hashlib.sha256(crop.tobytes()).hexdigest()
+            key = cache_key(crop.tobytes())
             with _digit_cell_cache_lock:
                 saved = _digit_cell_cache.get(key)
+            if saved is None:
+                saved = read_cache(key)
             if saved is not None:
                 record = dict(saved)
                 record["cached"] = True
@@ -307,6 +320,7 @@ def recognize_digit_cells(photo: Photo):
                     if len(_digit_cell_cache) >= 1500:
                         _digit_cell_cache.pop(next(iter(_digit_cell_cache)))
                     _digit_cell_cache[key] = record
+                write_cache(key, record)
             output.append({"bbox": box, **record})
         return {"engine": "PP-OCRv6 cell crops", "cells": output,
                 "gridDetected": bool(cells), "verified": False,

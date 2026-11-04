@@ -53,6 +53,11 @@ test('visible settings save API key, check model and edit a journal row',async()
     await until(()=>$('connectionStatus').textContent.includes('Нужен API-ключ'));
     assert.equal($('settingsDetails').open,true,'settings are visible without navigation');
     assert.ok($('apiKey'));
+    assert.ok($('reviewSidePanel'));
+    assert.ok($('reviewSideImage'));
+    assert.ok($('reviewSideCrop'));
+    assert.ok($('perspectivePreview'));
+    assert.ok($('perspectiveResult').hidden);
     assert.equal($('model').value,'qwen/qwen3-vl-235b-a22b-instruct');
     $('apiKey').value='example-not-a-real-key';
     $('settingsForm').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));

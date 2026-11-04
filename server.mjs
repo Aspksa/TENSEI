@@ -7,16 +7,17 @@ import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
-import {listCloudModels} from './lib/cloud.mjs';
+import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
 import {exportReadiness} from './lib/review-policy.mjs';
-import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText} from './lib/optional-ocr.mjs';
+import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText,previewPerspective} from './lib/optional-ocr.mjs';
 import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/local-intelligence.mjs';
+import {plateCandidates,findCrossSourceDuplicates,reviewPriority} from './lib/photo-review-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
-import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
+import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
@@ -131,8 +132,26 @@ async function recognize(input){
     const confidence=confidenceReport(verifiedRows);
     const documentType=classifyDocument(verifiedRows,template);
     const photoGroup=photoBatchMetadata(task.name,verifiedRows,task.startedAt);
+    // Diagnostic only. Never auto-accept an OCR reading based on registry or other photos.
+    const ledger=await tasks();
+    const prior=ledger.filter(t=>t.id!==id&&t.status==='done')
+      .flatMap(t=>(t.rows||[]).filter(r=>r.reviewed===true)).slice(0,2000);
+    const duplicateCandidates=findCrossSourceDuplicates(verifiedRows,prior);
+    const recognizedPlates=verifiedRows.map(r=>plateCandidates(r.vehicle,dictionary.vehicles));
+    const reviewDiagnostics=verifiedRows.map((r,i)=>reviewPriority(r,{
+      vehicleKnown:!dictionary.vehicles?.length||recognizedPlates[i].known,
+      duplicate:duplicateCandidates.some(x=>x.index===i)
+    }));
+    if(duplicateCandidates.length)result.warnings.push('Возможные повторные рейсы с ранее подтверждёнными фотографиями: '+
+      duplicateCandidates.length+'. Записи не объединялись.');
+
     const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,photoGroup,
+      duplicateCandidates,recognizedPlates,reviewDiagnostics,
+      unruledColumns:result.unruledColumns,tentativeCells:result.tentativeCells,
+      suspectedCorrections:result.suspectedCorrections,
+      visualCorrections:result.visualCorrections,
+      rowCoverage:result.rowCoverage,localDigitCandidates:result.localDigitCandidates,
       missingRows:result.missingRows,documentHint:result.documentHint,cellConsensus:result.cellConsensus,
       digitCells:result.digitCells,ocrComparison:result.ocrComparison,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
@@ -148,6 +167,9 @@ async function recognize(input){
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,photoGroup,
+      duplicateCandidates,recognizedPlates,reviewDiagnostics,
+      unruledColumns:result.unruledColumns,suspectedCorrections:result.suspectedCorrections,
+      rowCoverage:result.rowCoverage,localDigitCandidates:result.localDigitCandidates,
       missingRows:result.missingRows,documentHint:result.documentHint,
       cellConsensus:result.cellConsensus,digitCells:result.digitCells,ocrComparison:result.ocrComparison,
       localOcr:result.localOcr,localVl:result.localVl,
@@ -309,6 +331,40 @@ const server=http.createServer(async(req,res)=>{
       await writeJson(templatesPath,[...rest,t]);
       return send(res,200,{ok:true,template:t});
     }
+    if(req.method==='POST'&&url.pathname==='/api/review-cell'){
+      const input=await json(req),id=String(input.sourceId||''),field=String(input.field||'');
+      if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор исходного фото');
+      if(!['tare','gross','net','vehicle','time','driver'].includes(field))
+        throw Error('Выберите допустимую колонку для проверки');
+      const box=fixBox(input.bbox);
+      if(!box)throw Error('Нужны подтверждённые координаты ячейки');
+      const cfg=await settings();
+      if(!cfg.key)throw Error('Cloud.ru не настроен — укажите API-ключ');
+      return send(res,200,await photoQueue.enqueue(async()=>{
+        const raw=await fs.readFile(path.join(sourceDir,id+'.jpg'));
+        const image='data:image/jpeg;base64,'+raw.toString('base64');
+        const crop=await cropBox(image,box,{width:1200,quality:90});
+        const labels={tare:'Тара',gross:'Брутто',net:'Нетто',vehicle:'Госномер',
+          time:'Время',driver:'Водитель'};
+        const model=selectedModels(cfg.costMode,cfg.model).primary;
+        let calls=0,usage=null;
+        const answer=await recognizeWithFallback({key:cfg.key,model,image:crop,
+          prompt:'Перепроверь ОДНУ область рукописной таблицы. Поле: '+labels[field]+
+            '. Ответь только видимыми символами. Не делай выводов из арифметики и не придумывай пропущенные цифры. Если нельзя разобрать — ответь НЕЧИТАЕМО.',
+          fallback:false,retryEmpty:false,maxTokens:160,
+          onCall:()=>{calls++;if(calls>1)throw Error('Лимит повторной проверки: один облачный запрос');},
+          onUsage:info=>{usage=info?.usage||null}});
+        const logFile=path.join(dataDir,'manual-cell-checks.json');
+        let entries=[];try{entries=JSON.parse(await fs.readFile(logFile,'utf8'))}
+        catch(e){if(e.code!=='ENOENT')throw e}
+        entries.unshift({at:new Date().toISOString(),sourceId:id,field,
+          model:answer.model,cloudCalls:calls,usage});
+        await writeJson(logFile,entries.slice(0,300));
+        return {candidateText:String(answer.text||'').slice(0,180),field,
+          model:answer.model,cloudCalls:calls,usage,verified:false,applied:false,
+          note:'Второе чтение не меняет строку автоматически. Подтвердите по оригиналу.'};
+      }));
+    }
     if(req.method==='POST'&&url.pathname==='/api/row-crop'){
       const input=await json(req),id=String(input.sourceId||'');
       if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор фотографии');
@@ -368,6 +424,15 @@ const server=http.createServer(async(req,res)=>{
         cells:layout.cells,rows:layout.rows,columns:layout.columns,
         // Images in the preview should not be modified by segmentation.
         imageWidth:prepared.report.width,imageHeight:prepared.report.height});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/perspective-preview'){
+      const input=await json(req);
+      if(typeof input.image!=='string')throw Error('Нужна фотография');
+      const prepared=await improvePhoto(input.image,{enhance:false,compact:false});
+      const result=await previewPerspective(prepared.image,{url:process.env.TENSEI_PADDLE_URL});
+      return send(res,200,{applied:result.applied,reason:result.reason,
+        image:result.image,localOnly:true,verified:false,cloudCalls:0,
+        warning:'Предпросмотр не заменяет оригинал; изменение геометрии требует повторного сопоставления строк.'});
     }
     if(req.method==='POST'&&url.pathname==='/api/quality'){
       const input=await json(req);

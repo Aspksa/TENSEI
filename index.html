@@ -81,12 +81,26 @@
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <button id="localRead" class="button button-outline" type="button">Прочитать ячейки без Cloud.ru</button>
+              <button id="perspectivePreview" class="button button-outline" type="button">Выровнять лист · предпросмотр</button>
+              <div id="perspectiveResult" class="perspective-result" hidden>
+                <p id="perspectiveNote" class="help">Исправленная геометрия не заменяет исходник автоматически.</p>
+                <img id="perspectiveImage" alt="Экспериментальный вариант с исправленной перспективой">
+              </div>
               <div id="localReadResults" class="local-read-results" hidden></div>
               <div class="preview-surface" id="previewSurface">
                 <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>
               </div>
-              <div id="cellReviewToolbar" class="cell-review-toolbar" hidden><label for="cellPicker">Ячейка на фото</label><select id="cellPicker"></select></div>
+              <div id="cellReviewToolbar" class="cell-review-toolbar" hidden>
+                <label for="cellPicker">Ячейка на фото</label><select id="cellPicker"></select>
+                <label for="cellReviewField">Проверить поле</label><select id="cellReviewField">
+                  <option value="net">Нетто</option><option value="gross">Брутто</option>
+                  <option value="tare">Тара</option><option value="vehicle">Госномер</option>
+                  <option value="time">Время</option><option value="driver">Водитель</option>
+                </select>
+                <button id="reviewCellCloud" class="button button-outline" type="button">Cloud.ru · проверить ячейку (1 запрос)</button>
+                <p id="cloudCellReading" role="status" class="help">Чтение ячейки — только подсказка, не подтверждение.</p>
+              </div>
               <div class="crop-review" id="cropReview" hidden>
                 <div class="crop-review-title"><strong>Увеличенный фрагмент</strong><span>Ориентировочные координаты OCR · сверяйте с оригиналом</span></div>
                 <img id="cropPreview" alt="Увеличенный фрагмент строки или ячейки">
@@ -118,7 +132,7 @@
           <label class="searchbox"><span class="sr-only">Поиск по таблице</span><input id="search" type="search" placeholder="Поиск по номеру, водителю, примечанию…"></label>
           <label class="inline-check"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label>
         </div>
-        <div class="table-scroll">
+        <div class="review-split"><div class="table-scroll">
           <table aria-label="Распознанные записи журнала">
             <thead><tr>
               <th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Сверено</th><th>Проверка</th><th></th>
@@ -127,6 +141,14 @@
           </table>
           <div id="emptyTable" class="empty">Пока нет записей. Загрузите фотографию или добавьте строку вручную.</div>
         </div>
+        <aside id="reviewSidePanel" class="review-side-panel" aria-label="Сверка фотографии с таблицей">
+          <strong>Фотография рядом с таблицей</strong>
+          <p id="reviewSideStatus" class="help">Выберите строку, чтобы сверить её с оригиналом.</p>
+          <p id="reviewEvidence" class="help" role="status">Признаки ошибок OCR покажутся после открытия отчёта.</p>
+          <img id="reviewSideImage" alt="Исходная фотография для проверки строки" hidden>
+          <img id="reviewSideCrop" alt="Увеличенная область выбранной строки" hidden>
+          <p class="help">Координаты OCR ориентировочные; подтверждайте цифры по оригиналу.</p>
+        </aside></div>
         <div class="result-footer">
           <span id="tableCount">0 записей</span>
           <button id="approveMemory" class="button button-outline" type="button">Запомнить подтверждённые ТС и водителей</button>

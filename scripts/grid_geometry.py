@@ -121,3 +121,41 @@ def detect_text_bands(image):
     return {"cells": [], "row_boxes": result[:100], "column_boxes": [],
             "method": "ink-projection",
             "confidence": None, "unverified": True}
+
+
+def detect_crossout_candidates(image):
+    """Advisory diagonal-over-text candidates, not a confident correction detector."""
+    import cv2
+    if image is None or image.ndim != 3:
+        raise ValueError("Expected RGB image")
+    h, w = image.shape[:2]
+    if min(h, w) < 200:
+        return {"candidates": [], "verified": False}
+    lines = detect_text_bands(image).get("row_boxes", [])[:100]
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 55, 145)
+    result = []
+    for band in lines:
+        y1 = max(0, int(band[1] * h))
+        y2 = min(h, int(band[3] * h))
+        if y2-y1 < 10:
+            continue
+        guesses = cv2.HoughLinesP(edges[y1:y2], 1, np.pi/180, threshold=25,
+                                  minLineLength=max(20, w//55), maxLineGap=5)
+        if guesses is None:
+            continue
+        for segment in guesses[:150]:
+            x1, a, x2, b = (int(x) for x in segment[0])
+            dx, dy = abs(x2-x1), abs(b-a)
+            if dx < 20 or dx > w*.38 or dy < 7 or not (.15 <= dy/max(dx,1) <= .9):
+                continue
+            bbox = [max(0,(min(x1,x2)-4)/w),max(0,(y1+min(a,b)-4)/h),
+                    min(1,(max(x1,x2)+4)/w),min(1,(y1+max(a,b)+4)/h)]
+            result.append({"bbox": bbox, "reason": "diagonal-stroke-in-text-band",
+                           "verified": False})
+            if len(result)>=35:
+                break
+        if len(result)>=35:
+            break
+    return {"candidates": result, "verified": False,
+            "note": "Диагональные штрихи могут быть обычным почерком; сверяйте вручную"}
