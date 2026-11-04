@@ -9,6 +9,7 @@ import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
 import {listCloudModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
+import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 
@@ -22,8 +23,8 @@ const sourceDir=path.join(dataDir,'sources');
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -86,7 +87,7 @@ async function recognize(input){
   if(previous&&!input.force){
     return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
       warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
-      comparison:previous.comparison||null};
+      comparison:previous.comparison||null,mineruTask:previous.mineruTask||null};
   }
   const id=createHash('sha256').update(hash+Date.now()).digest('hex').slice(0,24);
   const task={id,name:String(input.name||'Фото').slice(0,160),hash,templateId:template.id,
@@ -94,13 +95,14 @@ async function recognize(input){
   await updateTask(task);
   try{
     const result=await processPhoto({image:input.image,name:task.name,cfg,template,
-      paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL});
+      paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL,
+      mineruUrl:process.env.TENSEI_MINERU_URL,mineruKey:process.env.TENSEI_MINERU_KEY});
     await fs.mkdir(sourceDir,{recursive:true});
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
-      comparison:result.comparison,attempts:result.attempts};
+      comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts};
     await updateTask({...task,...output,status:'done',finishedAt:new Date().toISOString()});
     return output;
   }catch(e){
@@ -157,7 +159,7 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
-        cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra});
+        cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
       const payload=await json(req),previous=await settings();
@@ -167,7 +169,7 @@ const server=http.createServer(async(req,res)=>{
       if(key.length>2048)throw Error('API-ключ слишком длинный');
       await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false,
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
-        paddle:payload.paddle===true,chandra:payload.chandra===true});
+        paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true});
       return send(res,200,{ok:true,hasKey:!!key,model});
     }
     if(req.method==='GET'&&url.pathname==='/api/connection'){
@@ -180,6 +182,14 @@ const server=http.createServer(async(req,res)=>{
         available:suggested,availableCount:list.length,
         reason:chosen?'Выбранная модель есть в каталоге API. Работа с фото ещё не проверена.':
           'Выбранной модели нет в списке API для этого ключа. Выберите доступную модель ниже.'});
+    }
+    const mineruStatus=/^\/api\/mineru\/([a-zA-Z0-9_-]{5,160})$/.exec(url.pathname);
+    if(req.method==='GET'&&mineruStatus){
+      const cfg=await settings();
+      if(!cfg.mineru)throw Error('MinerU Tasks не включена в настройках');
+      const output=await getMineruTask(mineruStatus[1],{url:process.env.TENSEI_MINERU_URL,
+        key:process.env.TENSEI_MINERU_KEY});
+      return send(res,200,output);
     }
     if(req.method==='GET'&&url.pathname==='/api/tasks'){
       return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
