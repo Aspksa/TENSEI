@@ -235,7 +235,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
       localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
-      autoPipeline:$('autoPipeline').checked,
+      autoPipeline:$('autoPipeline').checked,digitCellOcr:$('digitCellOcr').checked,
       gridSegmentation:$('gridSegmentation').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
@@ -312,8 +312,39 @@ $('detectGrid').onclick=async()=>{
   }catch(e){status('Локальное выделение недоступно: '+e.message+'. Проверьте запуск Paddle-сервиса и OpenCV.','error')}
   finally{button.disabled=false}
 };
+$('localRead').onclick=async()=>{
+  if(state.busy||!state.queue.length)return status('Выберите фотографию для локального чтения.','info');
+  const file=state.queue[0],button=$('localRead'),out=$('localReadResults');
+  button.disabled=true;
+  try{
+    const result=await api('local-recognize',{image:await fileData(file)});
+    const cells=result.digitCells?.cells||[];
+    const lines=result.localText||[];
+    out.replaceChildren();
+    const header=document.createElement('p');
+    header.textContent='Локально: '+cells.length+' ячеек, '+lines.length+' строк текста. Cloud.ru: 0 запросов. Данные не подтверждены.';
+    out.append(header);
+    for(const cell of cells.slice(0,36)){
+      const item=document.createElement('div');
+      item.textContent=(cell.text||'не прочитано')+' · '+(cell.cached?'кэш':'OCR')+
+        ' · '+(cell.numericCandidate?'числовой кандидат':'нужна проверка');
+      out.append(item);
+    }
+    if(!cells.length){for(const line of lines.slice(0,35)){
+      const item=document.createElement('div');item.textContent=String(line.text||'');out.append(item);
+    }}
+    if(result.errors?.length){
+      const err=document.createElement('p');
+      err.textContent=result.errors.join(' · ');out.append(err);
+    }
+    out.hidden=false;
+    gridBoxes=(result.layout?.cells||[]).slice(0,700);
+    drawPreviewGrid();
+  }catch(e){status('Локальное чтение: '+e.message,'error')}
+  finally{button.disabled=false}
+};
 function showPreview(file){
-  gridBoxes=[];$('gridOverlay').replaceChildren();
+  gridBoxes=[];$('gridOverlay').replaceChildren();$('localReadResults').hidden=true;
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
   const img=$('previewImage');img.hidden=true;$('previewEmpty').hidden=false;
@@ -610,6 +641,7 @@ async function initialize(){
     $('cvPreprocess').checked=cfg.cvPreprocess===true;
     $('gridSegmentation').checked=cfg.gridSegmentation===true;
     $('autoPipeline').checked=cfg.autoPipeline!==false;
+    $('digitCellOcr').checked=cfg.digitCellOcr===true;
     $('costMode').value=cfg.costMode||'auto';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
