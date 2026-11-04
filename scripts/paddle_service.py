@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 import uvicorn
+from grid_geometry import detect_grid
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
@@ -117,8 +118,18 @@ def analyze(photo: Photo):
                 value = box_to_xyxy(item, w, h)
                 if value:
                     cells.append(value)
+        geometry = detect_grid(image)
+        if geometry["cells"]:
+            # Clear ruled grids give more reproducible cell positions than
+            # spatial grouping of detached handwriting characters.
+            return {"engine": "OpenCV grid + PP-StructureV3",
+                    "width": w, "height": h, **geometry,
+                    "paddle_cell_count": len(cells),
+                    "layout_source": "ruling"}
         return {"engine": "PP-StructureV3", "width": w, "height": h,
-                "cells": cells[:800], "row_boxes": cluster_rows(cells)}
+                "cells": cells[:800], "row_boxes": cluster_rows(cells),
+                "confidence": None, "method": "pp-structure",
+                "layout_source": "table-model"}
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
@@ -161,6 +172,23 @@ def model_vl():
                 _vl_model = PaddleOCRVL(use_doc_orientation_classify=True,
                                         use_doc_unwarping=True)
     return _vl_model
+
+
+@app.post("/segment")
+def segment_grid(photo: Photo):
+    """CPU-only OpenCV segmentation, no Paddle runtime or model downloads."""
+    try:
+        image = decode_photo(photo)
+        result = detect_grid(image)
+        return {"engine": "OpenCV grid", "width": image.shape[1],
+                "height": image.shape[0], **result}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless")
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail=str(exc)[:350])
+
 
 
 @app.post("/ocr")
