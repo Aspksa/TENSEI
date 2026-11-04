@@ -149,6 +149,7 @@ async function recognize(input){
       confidence,documentType,memoryHints,photoGroup,
       duplicateCandidates,recognizedPlates,reviewDiagnostics,
       unruledColumns:result.unruledColumns,suspectedCorrections:result.suspectedCorrections,
+      visualCorrections:result.visualCorrections,
       rowCoverage:result.rowCoverage,localDigitCandidates:result.localDigitCandidates,
       missingRows:result.missingRows,documentHint:result.documentHint,cellConsensus:result.cellConsensus,
       digitCells:result.digitCells,ocrComparison:result.ocrComparison,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
