@@ -39,6 +39,9 @@ jobs:
           node --check lib/images.mjs
           node --check lib/photo-review-intelligence.mjs
           node --check lib/legion-server.mjs
+          node --check analytics.js
+          node --check lib/fleet-statistics.mjs
+          node --check lib/fleet-excel.mjs
           node --check lib/rapidocr.mjs
           node --check lib/transport-reconcile.mjs
       - name: Compile optional Python OCR service
