@@ -319,9 +319,10 @@ $('localRead').onclick=async()=>{
   try{
     const result=await api('local-recognize',{image:await fileData(file)});
     const cells=result.digitCells?.cells||[];
+    const lines=result.localText||[];
     out.replaceChildren();
     const header=document.createElement('p');
-    header.textContent='Локально: '+cells.length+' кандидатов. Cloud.ru: 0 запросов. Значения не подтверждены.';
+    header.textContent='Локально: '+cells.length+' ячеек, '+lines.length+' строк текста. Cloud.ru: 0 запросов. Данные не подтверждены.';
     out.append(header);
     for(const cell of cells.slice(0,36)){
       const item=document.createElement('div');
@@ -329,6 +330,9 @@ $('localRead').onclick=async()=>{
         ' · '+(cell.numericCandidate?'числовой кандидат':'нужна проверка');
       out.append(item);
     }
+    if(!cells.length){for(const line of lines.slice(0,35)){
+      const item=document.createElement('div');item.textContent=String(line.text||'');out.append(item);
+    }}
     if(result.errors?.length){
       const err=document.createElement('p');
       err.textContent=result.errors.join(' · ');out.append(err);
