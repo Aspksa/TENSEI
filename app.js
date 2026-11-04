@@ -388,6 +388,24 @@ async function refreshTasks(){
       task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
     item.append(name,meta);
     if(task.status==='done'&&task.reportId){
+      const importBtn=document.createElement('button');importBtn.type='button';
+      importBtn.className='button button-outline';importBtn.textContent='Добавить строки';
+      importBtn.onclick=async()=>{
+        if(state.busy)return;
+        try{
+          const report=await api('photo-report/'+task.reportId,undefined,'GET');
+          if(!Array.isArray(report.rows)||!report.rows.length)throw Error('В отчёте нет строк');
+          if(state.rows.some(r=>r.sourceId===report.sourceId))
+            return status('Эта фотография уже добавлена в реестр.','info');
+          if(!confirm('Добавить '+report.rows.length+' строк из '+(task.name||'фото')+' в черновик? Все значения необходимо сверить.'))return;
+          state.rows.push(...report.rows.map(r=>({...r,reviewed:false})));
+          updateRecords();
+          status('Строки добавлены. Проверьте веса и номера ТС по оригиналу.','success');
+        }catch(e){status('Не удалось добавить строки: '+e.message,'error')}
+      };
+      item.append(importBtn);
+    }
+    if(task.status==='done'&&task.reportId){
       const report=document.createElement('button');report.type='button';report.className='button button-outline';
       report.textContent='Отчёт JSON';report.onclick=async()=>{
         try{const record=await api('photo-report/'+task.reportId,undefined,'GET');
