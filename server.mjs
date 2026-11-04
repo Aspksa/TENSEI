@@ -6,6 +6,7 @@ import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
+import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=path.join(root,'data');
@@ -14,8 +15,8 @@ const draftPath=path.join(dataDir,'draft.json');
 const prompt='Прочитай фото рукописного журнала отгрузок/взвешиваний. Верни ТОЛЬКО валидный JSON объект с массивом rows. Формат строки: {"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}. Каждое физическое событие/рейс — отдельная строка; не удаляй повторы ТС. Вес в килограммах, не тоннах. Извлекай значения строго из соответствующих колонок; не выдумывай сведения. Если символы неразборчивы, оставляй поле пустым/null и uncertain=true, объясни в note. Не вычисляй неизвестные значения в уме. Сохраняй порядок строк. Никакого markdown.';
 
 async function settings(){
-  try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL)}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL};throw Error('Ошибка чтения настроек')}
+  try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -46,25 +47,11 @@ async function recognize(input){
   const cfg=await settings();
   if(!cfg.key)throw Error('Сначала сохраните API-ключ Cloud.ru');
   const converted=await prepareImage(input.image);
-  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),120000);
-  try{
-    const response=await fetch('https://foundation-models.api.cloud.ru/v1/chat/completions',{
-      method:'POST',signal:ctrl.signal,headers:{'Authorization':'Bearer '+cfg.key,'Content-Type':'application/json'},
-      body:JSON.stringify({model:cfg.model,temperature:0,max_tokens:8000,messages:[
-        {role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:converted.image}}]}
-      ]})
-    });
-    if(!response.ok)throw Error(cloudError(response.status));
-    const result=await response.json();
-    const content=result.choices?.[0]?.message?.content;
-    const text=typeof content==='string'?content:Array.isArray(content)?content.filter(x=>x.type==='text').map(x=>x.text).join(''):'';
-    const rows=parseModel(text).map(r=>({...r,source:String(input.name||'').slice(0,180)}));
-    return {rows,usage:result.usage||null,format:converted.originalFormat,model:cfg.model};
-  }catch(e){
-    if(e.name==='AbortError')throw Error('Cloud.ru не ответил за 120 секунд. Повторите эту страницу.');
-    if(e instanceof TypeError)throw Error('Не удалось подключиться к Cloud.ru. Проверьте интернет и сертификаты.');
-    throw e;
-  }finally{clearTimeout(timer)}
+  const result=await recognizeWithFallback({key:cfg.key,model:cfg.model,
+    image:converted.image,prompt,fallback:cfg.fallback});
+  const rows=parseModel(result.text).map(r=>({...r,source:String(input.name||'').slice(0,180)}));
+  return {rows,usage:result.usage,format:converted.originalFormat,model:result.model,
+    fallbackFrom:result.fallbackFrom||null};
 }
 async function excel(raw){
   const records=safeRows(raw);
@@ -114,7 +101,7 @@ const server=http.createServer(async(req,res)=>{
       return res.end(await fs.readFile(path.join(root,filename)));
     }
     if(req.method==='GET'&&url.pathname==='/api/settings'){
-      const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS});
+      const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
       const payload=await json(req),previous=await settings();
@@ -122,8 +109,19 @@ const server=http.createServer(async(req,res)=>{
       if(model.length>140||!/^[-a-zA-Z0-9_./]+$/.test(model))throw Error('Некорректный ID модели');
       const key=String(payload.key||previous.key||'').trim();
       if(key.length>2048)throw Error('API-ключ слишком длинный');
-      await writeJson(settingsPath,{key,model});
+      await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false});
       return send(res,200,{ok:true,hasKey:!!key,model});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/connection'){
+      const cfg=await settings();
+      if(!cfg.key)return send(res,200,{ok:false,reason:'Нет ключа Cloud.ru',models:[]});
+      const list=await listCloudModels(cfg.key);
+      const chosen=list.includes(cfg.model);
+      const suggested=MODELS.filter(m=>list.includes(m.id));
+      return send(res,200,{ok:true,selected:cfg.model,selectedAvailable:chosen,
+        available:suggested,availableCount:list.length,
+        reason:chosen?'Выбранная модель есть в каталоге API. Работа с фото ещё не проверена.':
+          'Выбранной модели нет в списке API для этого ключа. Выберите доступную модель ниже.'});
     }
     if(req.method==='GET'&&url.pathname==='/api/draft')return send(res,200,await getDraft());
     if(req.method==='POST'&&url.pathname==='/api/draft'){
