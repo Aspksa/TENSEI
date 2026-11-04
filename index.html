@@ -72,7 +72,7 @@
               <div class="queue" id="fileQueue" aria-live="polite"></div>
               <div id="uploadFeedback" class="upload-feedback" role="status" aria-live="polite">Добавьте фото — здесь появятся имя файла, следующий шаг и результат проверки.</div>
               <div class="actions upload-actions">
-                <button id="recognize" class="button button-primary" type="button">Обработать автоматически <span id="queuedCount"></span></button>
+                <button id="recognize" class="button button-primary" type="button"><span id="recognizeLabel">Обработать фото через Cloud.ru</span> <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
               <label class="inline-check auto-run-choice"><input type="checkbox" id="autoRecognize"> После выбора автоматически запускать Cloud.ru (платные запросы, только если ключ настроен)</label>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
