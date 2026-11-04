@@ -66,7 +66,9 @@ function draw(){
   $('auditNotice').textContent='На проверку: '+num(data.audit.excluded)+
     ' записей · повторных копий CSV: '+num(data.audit.copyDuplicates)+
     ' · фото, сопоставленных с CSV: '+num(data.audit.matchedPhotos)+
-    '. Спорные записи исключены из итогов.';
+    '. Спорные записи исключены из итогов.'+
+    (data.partial?' ВНИМАНИЕ: показан не весь архив, итог неполный.':'')+
+    (data.warnings?.length?' Диагностика источников: '+data.warnings.slice(0,3).join(' · '):'');
   const values=(list,key='netKg')=>list.map(x=>[x.plate||x.name||x.date||x.hour,
     metric==='tons'?Number(x[key]||0)/1000:Number(x.trips||0)]);
   graph('vehicles',values(data.vehicles.slice(0,10)));
