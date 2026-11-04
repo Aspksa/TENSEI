@@ -43,7 +43,10 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     r=await fetch(url+'/api/templates');assert.ok((await r.json()).templates.some(x=>x.id===added.template.id));
     r=await fetch(url+'/api/tasks');assert.equal(r.status,200);assert.deepEqual((await r.json()).tasks,[]);
     r=await fetch(url+'/api/ai-monitor');assert.equal(r.status,200);
-    assert.equal((await r.json()).estimatedCostRub,null);
+    const aiMonitor=await r.json();
+    assert.equal(aiMonitor.estimatedCostRub,null);
+    assert.equal(aiMonitor.watchEnabled,false);
+    assert.ok(Array.isArray(aiMonitor.recentWatchEvents));
     r=await fetch(url+'/api/approved-memory');assert.equal(r.status,200);
     assert.deepEqual((await r.json()).vehicles,[]);
     r=await fetch(url+'/api/approved-memory',{method:'POST',

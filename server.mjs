@@ -107,13 +107,15 @@ async function recognize(input){
     model:cfg.model,status:'processing',phase:'Загрузка принята',progress:10,trace:[],attempts:0,startedAt:new Date().toISOString()};
   const stages={'Подготовка изображения':20,'PaddleOCR: анализ ячеек':35,'Cloud.ru: анализ страницы':55,'Страница не прочиталась — распознаю увеличенные части':65,'Chandra OCR: независимое чтение':78,'MinerU: создание задачи для независимого разбора':88,'Формирование результата':93};
   const trace=[];
+  let telemetry={cloudCalls:0,usage:null,modelUsage:[]};
+  const onTelemetry=next=>{telemetry={...next};void updateTask({...task,...telemetry}).catch(()=>{});};
   const progress=stage=>{const module=stage.startsWith('Cloud.ru')||stage.startsWith('Страница')?'Cloud.ru':stage.startsWith('Paddle')?'PaddleOCR':stage.startsWith('Chandra')?'Chandra OCR':stage.startsWith('MinerU')?'MinerU':'TENSEI';trace.push({at:new Date().toISOString(),stage,module});void updateTask({...task,phase:stage,progress:stages[stage]||50,trace:[...trace]}).catch(()=>{});};
   await updateTask(task);
   try{
     const result=await processPhoto({image:input.image,name:task.name,cfg,template,
       paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL,
       mineruUrl:process.env.TENSEI_MINERU_URL,mineruKey:process.env.TENSEI_MINERU_KEY,
-      progress});
+      progress,telemetry:onTelemetry});
     await fs.mkdir(sourceDir,{recursive:true});
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
@@ -123,7 +125,7 @@ async function recognize(input){
     const memoryHints=approvedHints(result.rows,await approvedMemory());
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
-      imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
+      imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
       usage:result.usage||null,fallbackFrom:result.fallbackFrom||null,reportId:id};
@@ -133,7 +135,7 @@ async function recognize(input){
       id,sourceId:result.sourceId,name:task.name,startedAt:task.startedAt,
       finishedAt:new Date().toISOString(),status:'done',model:result.model,
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
-      usage:result.usage||null,trace:[...trace],warnings:result.warnings,
+      usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,rows:result.rows,confidence,documentType,memoryHints,
       localOcr:result.localOcr,localVl:result.localVl,
@@ -142,7 +144,7 @@ async function recognize(input){
     await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
     return output;
   }catch(e){
-    await updateTask({...task,status:'error',phase:'Ошибка',progress:100,trace,error:String(e.message||e).slice(0,260),finishedAt:new Date().toISOString()});
+    await updateTask({...task,...telemetry,status:'error',phase:'Ошибка',progress:100,trace,error:String(e.message||e).slice(0,260),finishedAt:new Date().toISOString()});
     throw e;
   }
 }
@@ -240,7 +242,14 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,output);
     }
     if(req.method==='GET'&&url.pathname==='/api/ai-monitor'){
-      return send(res,200,{...summarizeUsage(await tasks()),queuePending:photoQueue.pending});
+      const summary=summarizeUsage(await tasks());
+      let watch={attempted:[],events:[]};
+      try{watch=JSON.parse(await fs.readFile(watchedStatePath,'utf8'))}
+      catch(e){if(e.code!=='ENOENT')throw e}
+      return send(res,200,{...summary,queuePending:photoQueue.pending,
+        watchEnabled:Boolean(process.env.TENSEI_WATCH_DIR),
+        watchedFileCount:Array.isArray(watch.attempted)?watch.attempted.length:0,
+        recentWatchEvents:Array.isArray(watch.events)?watch.events.slice(0,20):[]});
     }
     if(req.method==='GET'&&url.pathname==='/api/approved-memory'){
       return send(res,200,await approvedMemory());
