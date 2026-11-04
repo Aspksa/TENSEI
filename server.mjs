@@ -257,18 +257,22 @@ async function readFleetImports(){
   return {imports:out,warnings};
 }
 async function fleetData(){
-  const [draft,history,vehicleRead]=await Promise.all([
-    getDraft(),readFleetImports(),
+  const [draftRead,history,vehicleRead]=await Promise.all([
+    getDraft().then(value=>({value,error:null})).catch(e=>({value:{rows:[]},
+      error:'Черновик фотографий не читается: '+e.message})),
+    readFleetImports(),
     fs.readFile(path.join(dataDir,'legion','vehicles.json'),'utf8')
       .then(s=>({value:JSON.parse(s),error:null})).catch(e=>({
         value:[],error:e.code==='ENOENT'?null:'Не удалось прочитать справочник ТС'
       }))
   ]);
   const warnings=[...history.warnings];
+  if(draftRead.error)warnings.push(draftRead.error);
   if(vehicleRead.error)warnings.push(vehicleRead.error);
-  const result=unifyFleet({imports:history.imports,photoRows:draft.rows,
+  const result=unifyFleet({imports:history.imports,photoRows:draftRead.value.rows,
     vehicles:Array.isArray(vehicleRead.value)?vehicleRead.value:[]});
-  return {...result,warnings,partial:warnings.some(x=>x.includes('НЕ является полным'))};
+  const partial=history.warnings.length>0||Boolean(draftRead.error);
+  return {...result,warnings,partial};
 }
 function fleetOptions(url){
   const vehicle=String(url.searchParams.get('vehicle')||'all').slice(0,50);
