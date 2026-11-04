@@ -7,7 +7,7 @@ import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
-import {listCloudModels} from './lib/cloud.mjs';
+import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
@@ -17,7 +17,7 @@ import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/loc
 import {plateCandidates,findCrossSourceDuplicates,reviewPriority} from './lib/photo-review-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
-import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
+import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
@@ -330,6 +330,40 @@ const server=http.createServer(async(req,res)=>{
       if(rest.length>=24)throw Error('Максимум 25 пользовательских шаблонов');
       await writeJson(templatesPath,[...rest,t]);
       return send(res,200,{ok:true,template:t});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/review-cell'){
+      const input=await json(req),id=String(input.sourceId||''),field=String(input.field||'');
+      if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор исходного фото');
+      if(!['tare','gross','net','vehicle','time','driver'].includes(field))
+        throw Error('Выберите допустимую колонку для проверки');
+      const box=fixBox(input.bbox);
+      if(!box)throw Error('Нужны подтверждённые координаты ячейки');
+      const cfg=await settings();
+      if(!cfg.key)throw Error('Cloud.ru не настроен — укажите API-ключ');
+      return send(res,200,await photoQueue.enqueue(async()=>{
+        const raw=await fs.readFile(path.join(sourceDir,id+'.jpg'));
+        const image='data:image/jpeg;base64,'+raw.toString('base64');
+        const crop=await cropBox(image,box,{width:1200,quality:90});
+        const labels={tare:'Тара',gross:'Брутто',net:'Нетто',vehicle:'Госномер',
+          time:'Время',driver:'Водитель'};
+        const model=selectedModels(cfg.costMode,cfg.model).primary;
+        let calls=0,usage=null;
+        const answer=await recognizeWithFallback({key:cfg.key,model,image:crop,
+          prompt:'Перепроверь ОДНУ область рукописной таблицы. Поле: '+labels[field]+
+            '. Ответь только видимыми символами. Не делай выводов из арифметики и не придумывай пропущенные цифры. Если нельзя разобрать — ответь НЕЧИТАЕМО.',
+          fallback:false,retryEmpty:false,maxTokens:160,
+          onCall:()=>{calls++;if(calls>1)throw Error('Лимит повторной проверки: один облачный запрос');},
+          onUsage:info=>{usage=info?.usage||null}});
+        const logFile=path.join(dataDir,'manual-cell-checks.json');
+        let entries=[];try{entries=JSON.parse(await fs.readFile(logFile,'utf8'))}
+        catch(e){if(e.code!=='ENOENT')throw e}
+        entries.unshift({at:new Date().toISOString(),sourceId:id,field,
+          model:answer.model,cloudCalls:calls,usage});
+        await writeJson(logFile,entries.slice(0,300));
+        return {candidateText:String(answer.text||'').slice(0,180),field,
+          model:answer.model,cloudCalls:calls,usage,verified:false,applied:false,
+          note:'Второе чтение не меняет строку автоматически. Подтвердите по оригиналу.'};
+      }));
     }
     if(req.method==='POST'&&url.pathname==='/api/row-crop'){
       const input=await json(req),id=String(input.sourceId||'');
