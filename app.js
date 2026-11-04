@@ -650,6 +650,20 @@ async function showRowCrop(sourceId,bbox,label='Строка'){
     note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
   }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
 }
+$('reviewCellCloud').onclick=async()=>{
+  const bbox=reviewCells[Number($('cellPicker').value)];
+  if(!bbox||!reviewSourceId)return status('Сначала выберите ячейку на исходном фото.','error');
+  if(!confirm('Отправить только выбранную ячейку в Cloud.ru? Это 1 платный запрос; ответ не заменит данные автоматически.'))return;
+  const button=$('reviewCellCloud'),label=$('cloudCellReading');button.disabled=true;
+  label.textContent='Cloud.ru перепроверяет отдельный фрагмент…';
+  try{
+    const result=await api('review-cell',{sourceId:reviewSourceId,bbox,
+      field:$('cellReviewField').value});
+    label.textContent='Другое чтение: '+result.candidateText+
+      ' · '+result.model+' · '+result.cloudCalls+' запрос. Не подтверждено. Сверьте с фото.';
+  }catch(e){label.textContent='Перепроверка не выполнена: '+e.message}
+  finally{button.disabled=false}
+};
 $('cellPicker').onchange=()=>{
   const i=Number($('cellPicker').value),box=reviewCells[i];
   if(box)void showRowCrop(reviewSourceId,box,'Ячейка '+(i+1));
@@ -663,6 +677,7 @@ async function showReportCells(task){
   reviewCells=(candidates||[]).filter(b=>
     Array.isArray(b)&&b.length===4&&b.every(v=>typeof v==='number'&&v>=0&&v<=1)&&b[2]>b[0]&&b[3]>b[1]).slice(0,700);
   reviewSourceId=report.sourceId;
+  $('cloudCellReading').textContent='Выберите ячейку. Облачная проверка требует отдельного подтверждения.';
   const issues=[
     'Разночтения OCR: '+(report.ocrComparison?.spatialDisagreements||0),
     'Возможные пропущенные строки: '+(report.missingRows?.unmatched?.length||0),
