@@ -464,6 +464,20 @@ function showSource(row){
   $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
 }
 
+$('approveMemory').onclick=async()=>{
+  const confirmed=state.rows.filter(r=>r.reviewed===true);
+  if(!confirmed.length)return status('Сначала сверьте строки с фотографиями и отметьте «Сверено».','error');
+  if(!confirm('Добавить номера ТС и водителей только из '+confirmed.length+' подтверждённых строк в локальный справочник?'))return;
+  const button=$('approveMemory');button.disabled=true;
+  try{
+    const existing=await api('approved-memory',undefined,'GET');
+    const vehicles=[...new Set([...(existing.vehicles||[]),...confirmed.map(r=>String(r.vehicle||'').trim()).filter(Boolean)])];
+    const drivers=[...new Set([...(existing.drivers||[]),...confirmed.map(r=>String(r.driver||'').trim()).filter(Boolean)])];
+    const result=await api('approved-memory',{confirmed:true,vehicles,drivers});
+    status('Подтверждённый справочник сохранён: '+result.vehicles+' ТС, '+result.drivers+' водителей.','success');
+  }catch(e){status('Ошибка справочника: '+e.message,'error')}
+  finally{button.disabled=false}
+};
 async function initialize(){
   updateSummary();renderTable();renderAudit();drawQueue();
   await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{})]);
