@@ -11,6 +11,7 @@ import {listCloudModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
+import {analyzeLocalGrid} from './lib/optional-ocr.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
@@ -33,8 +34,8 @@ async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.r
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -84,7 +85,7 @@ function identity(input,cfg,template){
   const bytes=Buffer.from(String(input.image||''));
   if(bytes.length>28000000)throw Error('Слишком большой файл');
   return createHash('sha256').update(bytes).update(cfg.model)
-    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,template.id])).digest('hex');
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,cfg.gridSegmentation,template.id])).digest('hex');
 }
 async function recognize(input){
   const cfg=await settings();
@@ -137,7 +138,7 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,rows:result.rows,confidence,documentType,memoryHints,
+      quality:result.quality,layout:result.layout,rows:result.rows,confidence,documentType,memoryHints,
       localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
@@ -205,7 +206,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
-        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,
+        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,gridSegmentation:cfg.gridSegmentation,
         costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -218,6 +219,7 @@ const server=http.createServer(async(req,res)=>{
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
         paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
         localText:payload.localText===true,localVl:payload.localVl===true,cvPreprocess:payload.cvPreprocess===true,
+        gridSegmentation:payload.gridSegmentation===true,
         costMode:['off','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
         maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
@@ -295,6 +297,18 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='POST'&&url.pathname==='/api/layout'){
+      const input=await json(req);
+      if(typeof input.image!=='string')throw Error('Нужна фотография');
+      const prepared=await improvePhoto(input.image,{enhance:false,compact:false});
+      const layout=await analyzeLocalGrid(prepared.image,{width:prepared.report.width,
+        height:prepared.report.height,url:process.env.TENSEI_PADDLE_URL});
+      return send(res,200,{engine:layout.engine,method:layout.method,
+        confidence:layout.confidence,available:layout.available,
+        cells:layout.cells,rows:layout.rows,columns:layout.columns,
+        // Images in the preview should not be modified by segmentation.
+        imageWidth:prepared.report.width,imageHeight:prepared.report.height});
+    }
     if(req.method==='POST'&&url.pathname==='/api/quality'){
       const input=await json(req);
       const image=await improvePhoto(input.image,{enhance:false});
