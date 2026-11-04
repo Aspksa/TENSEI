@@ -47,3 +47,5 @@
 @media(max-width:1180px){.analytics-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.analytics-grid{grid-template-columns:1fr}.analytics-panel.span-2{grid-column:span 1}.analytics-hero-art{max-width:23%}}
 @media(max-width:650px){.analytics-heading{padding:17px}.analytics-heading h1{font-size:25px}.analytics-heading p{font-size:12px}.analytics-hero-art{display:none}.analytics-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.analytics-kpis strong{font-size:23px}.analytics-kpis>div{padding:12px}.analytics-grid{gap:11px}.analytics-panel{padding:15px 11px}.analytics-panel>header h2{font-size:14px}.analytics-panel>header p{font-size:10px}.analytics-toolbar{gap:8px}.analytics-toolbar label{min-width:calc(50% - 5px)}.analytics-toolbar input,.analytics-toolbar select{width:100%;max-width:none}.vector-chart{min-height:150px}.vector-chart.large{min-height:190px}.analytic-help{width:20px;height:20px}}
 @media(prefers-reduced-motion:reduce){.vector-chart svg [role="button"]{transition:none}}
+
+.legion-zero-help{background:#f0f7fc;border:1px solid #d3e6f3;padding:11px 14px;border-radius:10px;color:#416784;font-size:12px;line-height:1.6;margin:-4px 0 17px}
