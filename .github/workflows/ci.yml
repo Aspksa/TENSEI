@@ -30,5 +30,7 @@ jobs:
           node --check app.js
           node --check lib/records.mjs
           node --check lib/images.mjs
+      - name: Compile optional Python OCR service
+        run: python -m py_compile scripts/paddle_service.py
       - name: Test image conversion, anomalies and HTTP API
         run: npm test

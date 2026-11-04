@@ -213,6 +213,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked,
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
+      localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
     state.hasKey=result.hasKey;
@@ -387,6 +388,24 @@ async function refreshTasks(){
       task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
     item.append(name,meta);
     if(task.status==='done'&&task.reportId){
+      const importBtn=document.createElement('button');importBtn.type='button';
+      importBtn.className='button button-outline';importBtn.textContent='Добавить строки';
+      importBtn.onclick=async()=>{
+        if(state.busy)return;
+        try{
+          const report=await api('photo-report/'+task.reportId,undefined,'GET');
+          if(!Array.isArray(report.rows)||!report.rows.length)throw Error('В отчёте нет строк');
+          if(state.rows.some(r=>r.sourceId===report.sourceId))
+            return status('Эта фотография уже добавлена в реестр.','info');
+          if(!confirm('Добавить '+report.rows.length+' строк из '+(task.name||'фото')+' в черновик? Все значения необходимо сверить.'))return;
+          state.rows.push(...report.rows.map(r=>({...r,reviewed:false})));
+          updateRecords();
+          status('Строки добавлены. Проверьте веса и номера ТС по оригиналу.','success');
+        }catch(e){status('Не удалось добавить строки: '+e.message,'error')}
+      };
+      item.append(importBtn);
+    }
+    if(task.status==='done'&&task.reportId){
       const report=document.createElement('button');report.type='button';report.className='button button-outline';
       report.textContent='Отчёт JSON';report.onclick=async()=>{
         try{const record=await api('photo-report/'+task.reportId,undefined,'GET');
@@ -463,6 +482,20 @@ function showSource(row){
   $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
 }
 
+$('approveMemory').onclick=async()=>{
+  const confirmed=state.rows.filter(r=>r.reviewed===true);
+  if(!confirmed.length)return status('Сначала сверьте строки с фотографиями и отметьте «Сверено».','error');
+  if(!confirm('Добавить номера ТС и водителей только из '+confirmed.length+' подтверждённых строк в локальный справочник?'))return;
+  const button=$('approveMemory');button.disabled=true;
+  try{
+    const existing=await api('approved-memory',undefined,'GET');
+    const vehicles=[...new Set([...(existing.vehicles||[]),...confirmed.map(r=>String(r.vehicle||'').trim()).filter(Boolean)])];
+    const drivers=[...new Set([...(existing.drivers||[]),...confirmed.map(r=>String(r.driver||'').trim()).filter(Boolean)])];
+    const result=await api('approved-memory',{confirmed:true,vehicles,drivers});
+    status('Подтверждённый справочник сохранён: '+result.vehicles+' ТС, '+result.drivers+' водителей.','success');
+  }catch(e){status('Ошибка справочника: '+e.message,'error')}
+  finally{button.disabled=false}
+};
 async function initialize(){
   updateSummary();renderTable();renderAudit();drawQueue();
   await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{})]);
@@ -475,6 +508,9 @@ async function initialize(){
     $('paddle').checked=cfg.paddle===true;
     $('chandra').checked=cfg.chandra===true;
     $('mineru').checked=cfg.mineru===true;
+    $('localText').checked=cfg.localText===true;
+    $('localVl').checked=cfg.localVl===true;
+    $('cvPreprocess').checked=cfg.cvPreprocess===true;
     $('costMode').value=cfg.costMode||'off';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);

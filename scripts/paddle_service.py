@@ -20,6 +20,8 @@ import uvicorn
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
+_ocr_model = None
+_vl_model = None
 _lock = threading.RLock()
 
 
@@ -120,6 +122,129 @@ def analyze(photo: Photo):
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
+
+
+def decode_photo(photo: Photo):
+    if len(photo.image) > 12_000_000:
+        raise ValueError("Image too large")
+    payload = re.match(r"^data:image/jpeg;base64,([A-Za-z0-9+/=]+)$", photo.image)
+    if payload is None:
+        raise ValueError("Expected JPEG data URL")
+    raw = base64.b64decode(payload.group(1), validate=True)
+    with Image.open(io.BytesIO(raw)) as img:
+        img = img.convert("RGB")
+        if img.width * img.height > 60_000_000:
+            raise ValueError("Too many pixels")
+        return np.asarray(img)
+
+
+def model_ocr():
+    global _ocr_model
+    if _ocr_model is None:
+        with _lock:
+            if _ocr_model is None:
+                from paddleocr import PaddleOCR
+                _ocr_model = PaddleOCR(
+                    use_doc_orientation_classify=True,
+                    use_doc_unwarping=True,
+                    use_textline_orientation=False,
+                )
+    return _ocr_model
+
+
+def model_vl():
+    global _vl_model
+    if _vl_model is None:
+        with _lock:
+            if _vl_model is None:
+                from paddleocr import PaddleOCRVL
+                _vl_model = PaddleOCRVL(use_doc_orientation_classify=True,
+                                        use_doc_unwarping=True)
+    return _vl_model
+
+
+@app.post("/ocr")
+def recognize_lines(photo: Photo):
+    """Advisory local text lines, not a verified weighbridge table."""
+    try:
+        image = decode_photo(photo)
+        with _lock:
+            prediction = next(iter(model_ocr().predict(image)))
+        report = prediction.json if hasattr(prediction, "json") else prediction
+        if callable(report):
+            report = report()
+        report = report.get("res", report)
+        lines = []
+        for text, score in zip(report.get("rec_texts") or [],
+                               report.get("rec_scores") or []):
+            if isinstance(text, str):
+                lines.append({"text": text[:200], "score": round(float(score), 4)})
+        return {"engine": "PP-OCRv6", "lines": lines[:400], "verified": False}
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
+
+
+@app.post("/vl")
+def understand_page(photo: Photo):
+    """Experimental PaddleOCR-VL; result is diagnostic only, never auto-applied."""
+    try:
+        image = decode_photo(photo)
+        with _lock:
+            prediction = next(iter(model_vl().predict(image)))
+        report = prediction.json if hasattr(prediction, "json") else prediction
+        if callable(report):
+            report = report()
+        if not isinstance(report, dict):
+            raise ValueError("Unexpected PaddleOCR-VL output")
+        import json
+        payload = json.dumps(report, ensure_ascii=False, default=str)[:16000]
+        return {"engine": "PaddleOCR-VL", "raw": payload, "verified": False}
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
+
+
+@app.post("/preprocess")
+def perspective_preview(photo: Photo):
+    """Conservative OpenCV quadrilateral correction, optional and explicit."""
+    try:
+        import cv2
+        image = decode_photo(photo)
+        height, width = image.shape[:2]
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        edges = cv2.Canny(cv2.GaussianBlur(gray, (5, 5), 0), 40, 140)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        selected = None
+        for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:8]:
+            area = cv2.contourArea(contour)
+            if not (.55 <= area / (width * height) <= .99):
+                continue
+            quad = cv2.approxPolyDP(contour, .02 * cv2.arcLength(contour, True), True)
+            if len(quad) == 4:
+                selected = quad.reshape(4, 2).astype("float32")
+                break
+        if selected is None:
+            return {"applied": False, "reason": "No safe page boundary"}
+        sums = selected.sum(axis=1)
+        diffs = np.diff(selected, axis=1).reshape(-1)
+        corners = np.array([selected[np.argmin(sums)], selected[np.argmin(diffs)],
+                            selected[np.argmax(sums)], selected[np.argmax(diffs)]],
+                           dtype="float32")
+        target = np.array([[0, 0], [width - 1, 0],
+                           [width - 1, height - 1], [0, height - 1]], dtype="float32")
+        matrix = cv2.getPerspectiveTransform(corners, target)
+        transformed = cv2.warpPerspective(image, matrix, (width, height),
+                                          borderMode=cv2.BORDER_REPLICATE)
+        ok, jpg = cv2.imencode(".jpg", cv2.cvtColor(transformed, cv2.COLOR_RGB2BGR))
+        if not ok:
+            raise ValueError("JPEG encoding failed")
+        return {"applied": True, "image": "data:image/jpeg;base64," +
+                base64.b64encode(jpg.tobytes()).decode("ascii")}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless")
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8765, access_log=False)

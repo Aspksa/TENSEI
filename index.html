@@ -87,6 +87,9 @@
 <label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
 <label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
 <label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
+<label class="inline-check"><input id="cvPreprocess" type="checkbox"> OpenCV — проверка перспективы (предпросмотр без замены оригинала)</label>
+<label class="inline-check"><input id="localText" type="checkbox"> PP-OCRv6 — локальное чтение строк (не подменяет Cloud.ru)</label>
+<label class="inline-check"><input id="localVl" type="checkbox"> PaddleOCR-VL — экспериментальное локальное понимание (может требовать GPU)</label>
 <label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
 <label class="inline-check"><input id="mineru" type="checkbox"> MinerU Tasks 4.1 — отдельная задача разбора фото (требуется локальный MinerU, дополнительная нагрузка)</label>
 </div></details>
@@ -162,6 +165,7 @@
         </div>
         <div class="result-footer">
           <span id="tableCount">0 записей</span>
+          <button id="approveMemory" class="button button-outline" type="button">Запомнить подтверждённые ТС и водителей</button>
           <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
         </div>
       </section>

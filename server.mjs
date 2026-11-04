@@ -14,6 +14,9 @@ import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
+import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from './lib/document-intelligence.mjs';
+import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
+import {startFolderWatcher} from './lib/folder-watch.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -23,11 +26,15 @@ const tasksPath=path.join(dataDir,'tasks.json');
 const templatesPath=path.join(dataDir,'templates.json');
 const sourceDir=path.join(dataDir,'sources');
 const photoReportsDir=path.join(dataDir,'photo-reports');
+const memoryPath=path.join(dataDir,'approved-memory.json');
+const watchedStatePath=path.join(dataDir,'watched-files.json');
+const photoQueue=new SerialQueue();
+async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.readFile(memoryPath,'utf8')))}catch(e){if(e.code==='ENOENT')return {vehicles:[],drivers:[]};throw e}}
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -77,7 +84,7 @@ function identity(input,cfg,template){
   const bytes=Buffer.from(String(input.image||''));
   if(bytes.length>28000000)throw Error('Слишком большой файл');
   return createHash('sha256').update(bytes).update(cfg.model)
-    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,template.id])).digest('hex');
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,template.id])).digest('hex');
 }
 async function recognize(input){
   const cfg=await settings();
@@ -111,7 +118,11 @@ async function recognize(input){
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const similar=(await tasks()).filter(t=>t.status==='done'&&t.imageHash&&hashDistance(t.imageHash,result.imageHash)<=4).slice(0,3).map(t=>({id:t.id,name:t.name}));
+    const confidence=confidenceReport(result.rows);
+    const documentType=classifyDocument(result.rows,template);
+    const memoryHints=approvedHints(result.rows,await approvedMemory());
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+      confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
@@ -124,7 +135,8 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,rows:result.rows,
+      quality:result.quality,rows:result.rows,confidence,documentType,memoryHints,
+      localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
     await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
@@ -191,6 +203,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
+        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,
         costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -202,6 +215,7 @@ const server=http.createServer(async(req,res)=>{
       await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false,
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
         paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
+        localText:payload.localText===true,localVl:payload.localVl===true,cvPreprocess:payload.cvPreprocess===true,
         costMode:['off','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
         maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
@@ -224,6 +238,19 @@ const server=http.createServer(async(req,res)=>{
       const output=await getMineruTask(mineruStatus[1],{url:process.env.TENSEI_MINERU_URL,
         key:process.env.TENSEI_MINERU_KEY});
       return send(res,200,output);
+    }
+    if(req.method==='GET'&&url.pathname==='/api/ai-monitor'){
+      return send(res,200,{...summarizeUsage(await tasks()),queuePending:photoQueue.pending});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/approved-memory'){
+      return send(res,200,await approvedMemory());
+    }
+    if(req.method==='POST'&&url.pathname==='/api/approved-memory'){
+      const payload=await json(req);
+      if(payload.confirmed!==true)throw Error('Справочник обновляется только после явного подтверждения');
+      const memory=normalizeMemory(payload);
+      await writeJson(memoryPath,memory);
+      return send(res,200,{ok:true,vehicles:memory.vehicles.length,drivers:memory.drivers.length});
     }
     if(req.method==='GET'&&url.pathname==='/api/tasks'){
       return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
@@ -264,7 +291,10 @@ const server=http.createServer(async(req,res)=>{
       const image=await improvePhoto(input.image,{enhance:false});
       return send(res,200,{quality:image.report,format:image.format});
     }
-    if(req.method==='POST'&&url.pathname==='/api/recognize')return send(res,200,await recognize(await json(req)));
+    if(req.method==='POST'&&url.pathname==='/api/recognize'){
+      const input=await json(req);
+      return send(res,200,await photoQueue.enqueue(()=>recognize(input)));
+    }
     if(req.method==='POST'&&url.pathname==='/api/export'){
       const rows=(await json(req)).rows;
       const file=await excel(rows);
@@ -275,11 +305,35 @@ const server=http.createServer(async(req,res)=>{
     return send(res,404,{error:'Раздел не найден'});
   }catch(e){return send(res,400,{error:String(e.message||e).slice(0,260)})}
 });
+const watchDir=process.env.TENSEI_WATCH_DIR||'';
+async function enableWatcher(){
+  if(!watchDir)return;
+  const cfg=await settings();
+  if(!cfg.key){console.warn('TENSEI_WATCH_DIR: save Cloud.ru key and restart TENSEI');return}
+  let saved={attempted:[],events:[]};
+  try{saved=JSON.parse(await fs.readFile(watchedStatePath,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e}
+  const seen=new Set(Array.isArray(saved.attempted)?saved.attempted:[]);
+  const events=Array.isArray(saved.events)?saved.events:[];
+  const watcher=startFolderWatcher({directory:watchDir,seen,
+    onEvent:async event=>{
+      events.unshift({...event,at:new Date().toISOString()});
+      await writeJson(watchedStatePath,{attempted:[...seen].slice(-1500),events:events.slice(0,100)});
+    },
+    onFile:async ({name,path:file})=>{
+      const ext=path.extname(name).toLowerCase();
+      const types={'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.bmp':'image/bmp','.tif':'image/tiff','.tiff':'image/tiff'};
+      const bytes=await fs.readFile(file);
+      await photoQueue.enqueue(()=>recognize({name,image:'data:'+types[ext]+';base64,'+bytes.toString('base64')}));
+    }});
+  console.log('TENSEI_WATCH_READY '+watchDir);
+  await watcher.scan();
+}
 const requestedPort=process.env.PORT?Number(process.env.PORT):0;
 server.on('error',e=>{console.error('Не удалось открыть локальный порт:',e.message);process.exitCode=1});
 server.listen(requestedPort,'127.0.0.1',()=>{
   const address='http://127.0.0.1:'+server.address().port;
   console.log('TENSEI_READY '+address);
+  enableWatcher().catch(e=>console.error('TENSEI watcher:',e.message));
   if(process.platform==='win32'&&process.env.TENSEI_NO_BROWSER!=='1')
     execFile('rundll32.exe',['url.dll,FileProtocolHandler',address],()=>{});
 });
