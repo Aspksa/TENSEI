@@ -59,7 +59,7 @@ try {
     $env:npm_config_cache = Join-Path $runtime 'npm-cache'
     $env:npm_config_update_notifier = 'false'
     $env:npm_config_prefix = Join-Path $runtime 'npm-prefix'
-    & $node $npm install --no-audit --no-fund --omit=dev
+    & $node $npm install --no-audit --no-fund --omit=dev --loglevel=error
     if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit $LASTEXITCODE)" }
     Set-Content -LiteralPath $marker -Value $markerValue -Encoding ascii
   }
