@@ -12,7 +12,7 @@ import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
 import {exportReadiness} from './lib/review-policy.mjs';
-import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText} from './lib/optional-ocr.mjs';
+import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText,previewPerspective} from './lib/optional-ocr.mjs';
 import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/local-intelligence.mjs';
 import {plateCandidates,findCrossSourceDuplicates,reviewPriority} from './lib/photo-review-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
@@ -388,6 +388,15 @@ const server=http.createServer(async(req,res)=>{
         cells:layout.cells,rows:layout.rows,columns:layout.columns,
         // Images in the preview should not be modified by segmentation.
         imageWidth:prepared.report.width,imageHeight:prepared.report.height});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/perspective-preview'){
+      const input=await json(req);
+      if(typeof input.image!=='string')throw Error('Нужна фотография');
+      const prepared=await improvePhoto(input.image,{enhance:false,compact:false});
+      const result=await previewPerspective(prepared.image,{url:process.env.TENSEI_PADDLE_URL});
+      return send(res,200,{applied:result.applied,reason:result.reason,
+        image:result.image,localOnly:true,verified:false,cloudCalls:0,
+        warning:'Предпросмотр не заменяет оригинал; изменение геометрии требует повторного сопоставления строк.'});
     }
     if(req.method==='POST'&&url.pathname==='/api/quality'){
       const input=await json(req);
