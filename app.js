@@ -371,6 +371,23 @@ async function refreshScanLibrary(){
       open.title='Загрузить строки именно этой фотографии, не смешивая с другими сканами';
       open.onclick=()=>openArchivedScan(scan.id).catch(e=>status(e.message,'error'));actions.append(open);
     }
+    if(['queued','processing'].includes(scan.status)){
+      const follow=document.createElement('button');follow.type='button';follow.textContent='Следить';
+      follow.title='Открыть векторный индикатор и следить за этапами уже запущенной задачи';
+      follow.onclick=async()=>{
+        if(state.busy)return;
+        state.busy=true;drawQueue();
+        try{
+          const ended=await pollArchivedScan(scan.id,'Наблюдение: '+scan.name);
+          if(ended.scan.status==='done'){
+            state.busy=false;
+            await openArchivedScan(scan.id);
+          }else status('Скан требует внимания: '+(ended.scan.error||ended.scan.stage),'error');
+        }catch(e){status('Наблюдение прервалось: '+e.message,'error')}
+        finally{state.busy=false;drawQueue();await refreshScanLibrary().catch(()=>{})}
+      };
+      actions.append(follow);
+    }
     if(['done','error','interrupted'].includes(scan.status)){
       const retry=document.createElement('button');retry.type='button';
       retry.textContent=scan.status==='done'?'Повторить OCR':'Повторить';
