@@ -224,30 +224,51 @@ async function excel(raw){
 async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
   catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
 async function readFleetImports(){
+  const warnings=[],out=[],limit=50000;
   const indexPath=path.join(dataDir,'legion','imports-index.json');
-  let index;try{index=JSON.parse(await fs.readFile(indexPath,'utf8'))}
-  catch(e){if(e.code==='ENOENT')return [];throw Error('Не удалось открыть историю CSV «Легиона»')}
-  if(!Array.isArray(index))throw Error('История импортов CSV повреждена');
-  const out=[];let count=0;
-  for(const entry of index.slice(0,50)){
-    if(!/^[0-9a-f-]{36}$/i.test(String(entry.id||'')))continue;
-    const file=path.join(dataDir,'legion','imports',entry.id+'.json');
-    let data;try{data=JSON.parse(await fs.readFile(file,'utf8'))}
-    catch(e){if(e.code==='ENOENT')continue;throw Error('Ошибка чтения CSV '+entry.id)}
-    if(!Array.isArray(data.rows))continue;
-    count+=data.rows.length;
-    if(count>50000)throw Error('История превышает 50 000 рейсов. Выберите меньший архив для анализа.');
-    out.push({id:entry.id,importedAt:String(entry.importedAt||''),rows:data.rows});
+  let index=[];
+  try{index=JSON.parse(await fs.readFile(indexPath,'utf8'))}
+  catch(e){if(e.code!=='ENOENT')warnings.push('Не удалось прочитать индекс CSV: '+e.message)}
+  if(!Array.isArray(index)){
+    warnings.push('Индекс импортов CSV повреждён; используйте резервную копию');
+    index=[];
   }
-  return out;
+  let count=0;
+  for(const entry of index.slice(0,50)){
+    if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
+    const file=path.join(dataDir,'legion','imports',entry.id+'.json');
+    let data;
+    try{data=JSON.parse(await fs.readFile(file,'utf8'))}
+    catch(e){warnings.push('Пропущен недоступный импорт '+entry.id);continue}
+    if(!Array.isArray(data?.rows)){warnings.push('Пропущен повреждённый импорт '+entry.id);continue}
+    const remaining=limit-count;
+    if(remaining===0){
+      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      break;
+    }
+    const rows=data.rows.slice(0,remaining);
+    out.push({id:entry.id,importedAt:String(entry.importedAt||''),rows});
+    count+=rows.length;
+    if(rows.length<data.rows.length){
+      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      break;
+    }
+  }
+  return {imports:out,warnings};
 }
 async function fleetData(){
-  const [draft,imports,vehicles]=await Promise.all([
+  const [draft,history,vehicleRead]=await Promise.all([
     getDraft(),readFleetImports(),
     fs.readFile(path.join(dataDir,'legion','vehicles.json'),'utf8')
-      .then(s=>JSON.parse(s)).catch(e=>{if(e.code==='ENOENT')return [];throw e})
+      .then(s=>({value:JSON.parse(s),error:null})).catch(e=>({
+        value:[],error:e.code==='ENOENT'?null:'Не удалось прочитать справочник ТС'
+      }))
   ]);
-  return unifyFleet({imports,photoRows:draft.rows,vehicles:Array.isArray(vehicles)?vehicles:[]});
+  const warnings=[...history.warnings];
+  if(vehicleRead.error)warnings.push(vehicleRead.error);
+  const result=unifyFleet({imports:history.imports,photoRows:draft.rows,
+    vehicles:Array.isArray(vehicleRead.value)?vehicleRead.value:[]});
+  return {...result,warnings,partial:warnings.some(x=>x.includes('НЕ является полным'))};
 }
 function fleetOptions(url){
   const vehicle=String(url.searchParams.get('vehicle')||'all').slice(0,50);
@@ -444,7 +465,7 @@ const server=http.createServer(async(req,res)=>{
         products:filtered.products,daily:filtered.daily,hours:filtered.hours,
         trips:filtered.rows.slice(0,2000),review:data.review.slice(0,200),
         audit:data.totals,sourcePolicy:data.sourcePolicy,note:data.note,
-        verified:false,filters:options,catalog:{vehicles:data.vehicles.map(v=>v.plate),
+        verified:false,filters:options,warnings:data.warnings,partial:data.partial,catalog:{vehicles:data.vehicles.map(v=>v.plate),
           products:data.products.map(p=>p.name)},tripsTruncated:filtered.rows.length>2000});
     }
     if(req.method==='GET'&&url.pathname==='/api/fleet/export'){
