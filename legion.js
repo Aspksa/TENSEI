@@ -9,18 +9,21 @@ const setBusy=flag=>{
   }
 };
 function showPage(name){
-  const legion=name==='legion';
-  $('photoWorkspace').hidden=legion;
+  const legion=name==='legion',analytics=name==='analytics',photo=!legion&&!analytics;
+  $('photoWorkspace').hidden=!photo;
   $('legionWorkspace').hidden=!legion;
-  $('navPhoto').classList.toggle('active',!legion);
-  $('navLegion').classList.toggle('active',legion);
-  $('navPhoto').setAttribute('aria-current',legion?'false':'page');
-  $('navLegion').setAttribute('aria-current',legion?'page':'false');
-  document.title=legion?'Легион · отчёты — TENSEI':'Распознавание фото — TENSEI';
+  $('analyticsWorkspace').hidden=!analytics;
+  for(const [id,active] of [['navPhoto',photo],['navLegion',legion],['navAnalytics',analytics]]){
+    $(id).classList.toggle('active',active);
+    $(id).setAttribute('aria-current',active?'page':'false');
+  }
+  document.title=(legion?'Легион · отчёты':analytics?'Статистика':'Распознавание фото')+' — TENSEI';
   if(legion)void Promise.all([refreshBase(),refreshReports()]).catch(e=>notice(e.message,'error'));
+  document.dispatchEvent(new CustomEvent('tensei:page',{detail:{page:name}}));
 }
 $('navPhoto').onclick=()=>showPage('photo');
 $('navLegion').onclick=()=>showPage('legion');
+$('navAnalytics').onclick=()=>showPage('analytics');
 document.querySelector('.toplink')?.addEventListener('click',()=>showPage('photo'));
 function notice(value,type='info'){
   const el=$('legionNotice');el.hidden=!value;
@@ -99,6 +102,7 @@ $('legionVehicleForm').onsubmit=async event=>{
   setBusy(true);
   try{
     await api('vehicle',{plate,model,driver});
+    window.dispatchEvent(new Event('tensei:legion-updated'));
     $('legionVehicleForm').reset();
     await refreshBase();
     if(state.importId)await restorePreview(state.importId);
@@ -195,6 +199,7 @@ $('legionCsvFile').onchange=async event=>{
   $('legionImportStatus').textContent='Читаю '+file.name+'…';
   try{
     const result=await api('import-csv',{file:await readAsDataURL(file),name:file.name});
+    window.dispatchEvent(new Event('tensei:legion-updated'));
     drawPreview(result);
     notice('CSV прочитан: '+result.count+' рейсов, '+(result.groups?.length||0)+
       ' товаров. '+(result.summary?.unknownVehicles?.length||0)+' автомобилей с неполными данными.',
@@ -253,7 +258,41 @@ async function refreshReports(){
   }
   box.append(fragment);
 }
+
+function initLegionTooltips(){
+  const tips={
+    legionCsvFile:'Выберите CSV, выгруженный карьером. Данные читаются локально, без Cloud.ru. Поддерживаются CP1251 и UTF-8.',
+    legionStatTrips:'Количество строк-рейсов в загруженном CSV; повторные рейсы одной машины считаются отдельно.',
+    legionStatTons:'Сумма Нетто (кг) / 1000. Источник: колонка Нетто (или Брутто − Тара) в CSV.',
+    legionStatProducts:'Сколько разных наименований товаров в этом файле. «Скала» и «СКАЛА +» отдельно.',
+    legionStatUnknown:'Госномера, для которых в локальной Базе ТС нет машины, модели или водителя.',
+    legionMasterFile:'Загрузите XLSX с листом «База ТС». Если его нет, TENSEI попробует извлечь госномер, модель и водителя из старого отчёта.',
+    legionPlate:'Введите госномер. Пробелы, регион и похожие русские/латинские буквы нормализуются при сопоставлении.',
+    legionModel:'Марка и модель из вашей базы, например FAW или Scania; приложение не угадывает её.',
+    legionDriver:'Водитель — только достоверные сведения. Оставьте пустым, если неизвестен.',
+    legionCoefficient:'Коэффициент 1,55 сохранён из старого Excel. Формула итога: тонны / коэффициент. Это не физические тонно-километры.',
+    legionAutoGenerate:'Когда CSV полностью корректен, отчёты формируются после выбора файла без отдельной кнопки.',
+    legionAcceptSkipped:'Включайте только после просмотра ошибок CSV: пропущенные строки не попадут в итоговые отчёты.',
+    legionGenerate:'Создаёт отдельный XLSX по каждой паре дата/товар и общий ZIP в reports/Легион.',
+    legionDownloadZip:'Скачивает уже сформированный архив XLSX. Исходники остаются в папке reports/Легион.',
+    legionBaseStatus:'Источник: локальная data/legion/vehicles.json. Без импорта мастер-файла база изначально пуста.',
+    legionBaseSearch:'Поиск по номеру ТС, модели и водителю в локальной базе.',
+    legionReportsFolder:'Путь к локальным файлам XLSX и ZIP, созданным после генерации.',
+    legionStatUnknown:'Машины без заполненной модели или водителя считаются нуждающимися в проверке.'};
+  for(const [id,text] of Object.entries(tips)){
+    const el=$(id);if(el){el.title=text;el.setAttribute('data-explain',text)}
+  }
+  const sections=[
+    ['legionCsvFileName','Требуются исходные CSV карьера. Поля: ТС, Товар, Дата и Нетто (либо Брутто + Тара).'],
+    ['legionImportStatus','В строках CSV отображаются ошибки, например отсутствие даты или некорректный вес.'],
+    ['legionOutputStatus','Показаны результаты формирования XLSX и путь к каталогу reports/Легион.'],
+    ['legionBaseList','Нажмите на машину в списке, чтобы заполнить поля редактирования.']
+  ];
+  for(const [id,text] of sections)if($(id))$(id).title=text;
+}
+
 async function initLegion(){
+  initLegionTooltips();
   setBusy(false);
   try{
     await Promise.all([refreshBase(),refreshReports()]);
