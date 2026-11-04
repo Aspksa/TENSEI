@@ -661,6 +661,12 @@ async function showReportCells(task){
   reviewCells=(report.layout?.cellBoxes||[]).filter(b=>
     Array.isArray(b)&&b.length===4&&b.every(v=>typeof v==='number'&&v>=0&&v<=1)&&b[2]>b[0]&&b[3]>b[1]).slice(0,700);
   reviewSourceId=report.sourceId;
+  const issues=[
+    'Разночтения OCR: '+(report.ocrComparison?.spatialDisagreements||0),
+    'Возможные пропущенные строки: '+(report.missingRows?.unmatched?.length||0),
+    'Подозрительные исправления: '+(report.visualCorrections?.candidates?.length||0),
+    'Возможные дубли: '+(report.duplicateCandidates?.length||0)];
+  $('reviewEvidence').textContent=issues.join(' · ')+'. Это подсказки, не подтверждённая точность.';
   $('cellReviewToolbar').hidden=reviewCells.length===0;
   const picker=$('cellPicker');picker.replaceChildren();
   for(let i=0;i<reviewCells.length;i++){
