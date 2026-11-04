@@ -37,6 +37,8 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.match(home,/cropPreview/);
     assert.match(home,/cellPicker/);
     assert.match(home,/exportReadiness/);
+    assert.match(home,/reviewSidePanel/);
+    assert.match(home,/perspectivePreview/);
     assert.match(home,/autoPipeline/);
     assert.match(home,/Авто — локально/);
     for(const file of ['app.js','styles.css','humor-messages.js']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
@@ -51,6 +53,8 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     r=await fetch(url+'/api/photo-groups');assert.equal(r.status,200);
     assert.deepEqual((await r.json()).groups,[]);
     r=await fetch(url+'/api/local-recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    assert.equal(r.status,400);
+    r=await fetch(url+'/api/perspective-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
     assert.equal(r.status,400);
     r=await fetch(url+'/api/templates');assert.equal(r.status,200);
     assert.ok((await r.json()).templates.length>=2);
