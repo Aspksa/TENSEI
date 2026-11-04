@@ -138,3 +138,41 @@ test('batch CSV detects repeated trips and blocks final Excel until errors resol
     assert.equal(restored.audit.duplicates.length,1);
   }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
 });
+
+test('photo draft and Legion CSV produce a read-only reconciled ledger',async()=>{
+  const svc=await serverStart();
+  try{
+    const csv='ТС;Товар;Дата оформления;Нетто\nА905УО;Скала;01.11.2026 12:00;27000\n';
+    let response=await post(svc.url,'import-csv',{name:'trip.csv',
+      file:'data:text/csv;base64,'+Buffer.from(csv,'utf8').toString('base64')});
+    assert.equal(response.status,200,JSON.stringify(response.body));
+    const importId=response.body.importId;
+    const photo={tripDate:'2026-11-01',time:'12:00',vehicle:'А905УО',
+      net:27000,source:'Журнал 1.jpg',reviewed:true};
+    let r=await fetch(svc.url+'/api/draft',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:[photo]})});
+    assert.equal(r.status,200);
+    r=await fetch(svc.url+'/api/transport/reconcile?importId='+importId);
+    assert.equal(r.status,200);
+    let data=await r.json();
+    assert.equal(data.reconciliation.counts.matched,1);
+    assert.equal(data.combined.length,2);
+    assert.equal(data.reconciliation.verified,false);
+    assert.equal(data.combined[0].source,'photo');
+    assert.equal(data.combined[1].source,'csv');
+    // A photo without date must never receive an invented match.
+    r=await fetch(svc.url+'/api/draft',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rows:[{...photo,tripDate:''}]})});
+    assert.equal(r.status,200);
+    r=await fetch(svc.url+'/api/transport/reconcile?importId='+importId);
+    data=await r.json();
+    assert.equal(data.reconciliation.counts.matched,0);
+    assert.equal(data.reconciliation.rows[0].status,'needs-review');
+    r=await fetch(svc.url+'/api/transport/reconcile');
+    assert.equal(r.status,400);
+    r=await fetch(svc.url+'/api/ocr-health');
+    assert.equal(r.status,200);
+    assert.equal((await r.json()).cloudCalls,0);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});

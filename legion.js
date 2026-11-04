@@ -20,6 +20,36 @@ function showPage(name){
   document.title=legion?'Легион · отчёты — TENSEI':'Распознавание фото — TENSEI';
   if(legion)void Promise.all([refreshBase(),refreshReports()]).catch(e=>notice(e.message,'error'));
 }
+$('legionReconcile').onclick=async()=>{
+  if(!state.importId)return notice('Сначала загрузите CSV в «Легион».','info');
+  const button=$('legionReconcile'),panel=$('legionReconcileResults');
+  button.disabled=true;panel.hidden=false;panel.textContent='Сравниваю локальный черновик с выбранным CSV…';
+  try{
+    const res=await fetch('/api/transport/reconcile?importId='+encodeURIComponent(state.importId));
+    const data=await res.json();
+    if(!res.ok)throw Error(data.error||'Ошибка сверки');
+    const count=data.reconciliation.counts,totals=data.reconciliation.totals;
+    panel.replaceChildren();
+    const heading=document.createElement('strong');
+    heading.textContent='Фото: '+count.photos+' · CSV: '+count.csv+
+      ' · кандидатов совпадения: '+count.matched+' · расхождений: '+count.mismatched+
+      ' · неопределённых: '+count.ambiguous;
+    panel.append(heading);
+    const sums=document.createElement('p');
+    sums.textContent='Нетто фото: '+formatTons(totals.photoKg/1000)+
+      ' т · CSV: '+formatTons(totals.csvKg/1000)+
+      ' т. Суммы не доказывают соответствие отдельных рейсов.';
+    panel.append(sums);
+    for(const item of data.reconciliation.rows.filter(x=>x.status!=='candidate-match').slice(0,30)){
+      const p=document.createElement('p');
+      p.textContent='Фото, строка '+(item.photoIndex+1)+' · '+item.status+': '+item.reason;
+      panel.append(p);
+    }
+    const note=document.createElement('p');note.textContent=data.reconciliation.note;
+    panel.append(note);
+  }catch(e){panel.textContent='Не удалось сверить фото и CSV: '+e.message}
+  finally{button.disabled=false}
+};
 $('navPhoto').onclick=()=>showPage('photo');
 $('navLegion').onclick=()=>showPage('legion');
 document.querySelector('.toplink')?.addEventListener('click',()=>showPage('photo'));

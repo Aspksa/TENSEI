@@ -1,9 +1,20 @@
 import {humorCategory,createHumorRotator} from './humor-messages.js';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
-const columns=['time','vehicle','driver','tare','gross','net','note'];
-const titles={time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
+const columns=['tripDate','time','vehicle','driver','tare','gross','net','note'];
+const titles={tripDate:'Дата рейса',time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
 
+async function updateRapidStatus(){
+  try{
+    const response=await fetch('/api/ocr-health');
+    if(!response.ok)return;
+    const data=await response.json(),target=$('rapidOCRStatus');
+    if(target)target.textContent=data.rapid?.available?
+      'RapidOCR CPU готов · локальная обработка по одному запросу':
+      'RapidOCR CPU необязателен · '+(data.rapid?.reason||'используется существующий OCR');
+  }catch{const target=$('rapidOCRStatus');if(target)target.textContent='RapidOCR CPU не настроен'}
+}
+void updateRapidStatus();
 function status(message,kind='info'){
   const box=$('notice');
   box.hidden=!message;
@@ -37,6 +48,7 @@ function inspect(items){
     const issues=[];
     if(row.uncertain&&!row.reviewed)issues.push('Модель не уверена в записи');
     if(!text(row.vehicle).trim())issues.push('Нет номера автомобиля');
+    if(row.tripDate&&!/^\d{4}-\d{2}-\d{2}$/.test(row.tripDate))issues.push('Проверьте дату рейса');
     if(row.vehicleUnlisted&&!row.reviewed)issues.push('ТС нет в подтверждённом справочнике');
     if(row.time&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(row.time))issues.push('Проверьте время');
     const gross=asWeight(row.gross),tare=asWeight(row.tare),net=asWeight(row.net);
@@ -650,6 +662,19 @@ async function showRowCrop(sourceId,bbox,label='Строка'){
     note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
   }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
 }
+$('reviewAngleLocal').onclick=async()=>{
+  const bbox=reviewCells[Number($('cellPicker').value)];
+  if(!bbox||!reviewSourceId)return status('Выберите ячейку на фото.','error');
+  const button=$('reviewAngleLocal'),target=$('cloudCellReading');
+  button.disabled=true;target.textContent='RapidOCR CPU: читаю 0° / -8° / +8° без Cloud.ru…';
+  try{
+    const answer=await api('review-angle',{sourceId:reviewSourceId,bbox});
+    target.textContent=answer.variants.map(v=>v.rotationDegrees+'°: '+
+      (v.readings.join(' / ')||'непрочитано')).join(' · ')+
+      '. Это неподтверждённые варианты; сверьте с исходником.';
+  }catch(e){target.textContent='Локальная проверка недоступна: '+e.message}
+  finally{button.disabled=false}
+};
 $('reviewCellCloud').onclick=async()=>{
   const bbox=reviewCells[Number($('cellPicker').value)];
   if(!bbox||!reviewSourceId)return status('Сначала выберите ячейку на исходном фото.','error');

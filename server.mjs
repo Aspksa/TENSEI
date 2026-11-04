@@ -20,6 +20,8 @@ import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
+import {reconcilePhotoCsv,timeSequenceWarnings} from './lib/transport-reconcile.mjs';
+import {rapidHealth,analyzeRapidOCR,analyzeRapidDigitVariants} from './lib/rapidocr.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -129,6 +131,8 @@ async function recognize(input){
     const dictionary=await approvedMemory();
     const memoryHints=approvedHints(result.rows,dictionary);
     const verifiedRows=markUnknownVehicles(result.rows,dictionary);
+    const timeWarnings=timeSequenceWarnings(verifiedRows);
+    if(timeWarnings.length)result.warnings.push('Последовательность времени требует проверки: '+timeWarnings.length+' строк.');
     const confidence=confidenceReport(verifiedRows);
     const documentType=classifyDocument(verifiedRows,template);
     const photoGroup=photoBatchMetadata(task.name,verifiedRows,task.startedAt);
@@ -146,7 +150,7 @@ async function recognize(input){
       duplicateCandidates.length+'. Записи не объединялись.');
 
     const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
-      confidence,documentType,memoryHints,photoGroup,
+      confidence,documentType,memoryHints,photoGroup,timeWarnings,
       duplicateCandidates,recognizedPlates,reviewDiagnostics,
       unruledColumns:result.unruledColumns,tentativeCells:result.tentativeCells,
       suspectedCorrections:result.suspectedCorrections,
@@ -191,20 +195,20 @@ async function excel(raw){
   sheet.columns=[
     ['№',7],['Время',11],['ТС',18],['Водитель',24],['Тара, кг',15],
     ['Брутто, кг',16],['Нетто, кг',15],['Нетто, т',14],
-    ['Источник',23],['Примечание',35],['Сверено с фото',17],['Проверить',16],['Аномалии',55]
+    ['Источник',23],['Примечание',35],['Сверено с фото',17],['Проверить',16],['Аномалии',55],['Дата рейса',15]
   ].map(([header,width])=>({header,width}));
   sheet.getRow(1).height=28;
   sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
   records.forEach((r,i)=>{
     const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
       r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',(r.issues.length||!r.reviewed)?'ПРОВЕРИТЬ':'OK',
-      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; ')]);
+      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; '),r.tripDate||'']);
     for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
     row.getCell(8).numFmt='0.000';
     if(r.issues.length||!r.reviewed)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
     else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
   });
-  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:13}};
+  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:14}};
   sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
   sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
   const summary=book.addWorksheet('Контроль');
@@ -331,6 +335,20 @@ const server=http.createServer(async(req,res)=>{
       await writeJson(templatesPath,[...rest,t]);
       return send(res,200,{ok:true,template:t});
     }
+    if(req.method==='POST'&&url.pathname==='/api/review-angle'){
+      const input=await json(req),id=String(input.sourceId||'');
+      if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор исходного фото');
+      const bbox=fixBox(input.bbox);
+      if(!bbox)throw Error('Выберите ячейку для локального чтения');
+      const health=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
+      if(!health.available)throw Error('RapidOCR CPU не запущен. Установите необязательный локальный модуль.');
+      return send(res,200,await photoQueue.enqueue(async()=>{
+        const bytes=await fs.readFile(path.join(sourceDir,id+'.jpg'));
+        const original='data:image/jpeg;base64,'+bytes.toString('base64');
+        const crop=await cropBox(original,bbox,{width:900,quality:90});
+        return analyzeRapidDigitVariants(crop,{url:process.env.TENSEI_RAPIDOCR_URL});
+      }));
+    }
     if(req.method==='POST'&&url.pathname==='/api/review-cell'){
       const input=await json(req),id=String(input.sourceId||''),field=String(input.field||'');
       if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор исходного фото');
@@ -389,15 +407,41 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='GET'&&url.pathname==='/api/ocr-health'){
+      const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
+      return send(res,200,{rapid,localOnly:true,cloudCalls:0});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/transport/reconcile'){
+      const importId=String(url.searchParams.get('importId')||'');
+      if(!/^[0-9a-f-]{36}$/i.test(importId))throw Error('Выберите импорт CSV «Легиона»');
+      const file=path.join(dataDir,'legion','imports',importId+'.json');
+      let imported;try{imported=JSON.parse(await fs.readFile(file,'utf8'))}
+      catch(e){if(e.code==='ENOENT')throw Error('Импорт CSV не найден');throw e}
+      const draft=await getDraft();
+      const photos=draft.rows.slice(0,1500),csv=Array.isArray(imported.rows)?imported.rows:[];
+      const reconciliation=reconcilePhotoCsv(photos,csv);
+      const combined=[
+        ...photos.map((row,index)=>({source:'photo',index,date:row.tripDate||'',time:row.time||'',
+          plate:row.vehicle||'',netKg:row.net??null,product:null,
+          matchStatus:reconciliation.rows[index]?.status||'needs-review',reviewed:row.reviewed===true})),
+        ...csv.slice(0,1500).map((row,index)=>({source:'csv',index,date:row.date||'',time:row.time||'',
+          plate:row.plate||'',netKg:row.netKg??null,product:row.product||'',reviewed:false}))
+      ];
+      return send(res,200,{importId,importName:String(imported.name||'CSV').slice(0,120),
+        reconciliation,combined,source:'draft+legion',verified:false,
+        note:'Реестр только для сравнения. Исходные фото, CSV и Excel не изменяются.'});
+    }
     if(req.method==='POST'&&url.pathname==='/api/local-recognize'){
       const input=await json(req);
       if(typeof input.image!=='string')throw Error('Нужна фотография');
       const prepared=await improvePhoto(input.image,{enhance:true,compact:false});
+      const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
       const [layoutResult,digitResult,textResult]=await Promise.allSettled([
         analyzeLocalGrid(prepared.image,{width:prepared.report.width,
           height:prepared.report.height,url:process.env.TENSEI_PADDLE_URL}),
         analyzeDigitCells(prepared.image,{url:process.env.TENSEI_PADDLE_URL}),
-        analyzeLocalText(prepared.image,{url:process.env.TENSEI_PADDLE_URL})
+        rapid.available?analyzeRapidOCR(prepared.image,{url:process.env.TENSEI_RAPIDOCR_URL}):
+          analyzeLocalText(prepared.image,{url:process.env.TENSEI_PADDLE_URL})
       ]);
       const layout=layoutResult.status==='fulfilled'?layoutResult.value:null;
       const digits=digitResult.status==='fulfilled'?digitResult.value:null;
@@ -406,6 +450,7 @@ const server=http.createServer(async(req,res)=>{
         throw Error('Локальные OCR-модули недоступны. Установите OpenCV и PaddleOCR.');
       return send(res,200,{localOnly:true,cloudCalls:0,verified:false,
         rows:[],layout, digitCells:digits,localText: texts?.lines||[],
+        localEngine:texts?.engine||null,rapidOCR:rapid,
         documentHint:classifyFromLayout(layout,texts,BUILTIN_TEMPLATES),
         cellConsensus:localOcrConsensus(texts,{recognizedCells:
           (digits?.cells||[]).map(x=>({bbox:x.bbox,text:x.text}))}),
