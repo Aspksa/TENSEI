@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
@@ -13,6 +13,8 @@ import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
+import {createScanLibrary} from './lib/scan-library.mjs';
+import {analyzeTrips,loadLegionStats} from './lib/analytics.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -29,7 +31,7 @@ async function settings(){
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
-  const tmp=file+'.'+process.pid+'.tmp';
+  const tmp=file+'.'+randomUUID()+'.tmp';
   try{await fs.writeFile(tmp,JSON.stringify(obj,null,2),{mode:0o600});await fs.rename(tmp,file)}
   finally{await fs.rm(tmp,{force:true}).catch(()=>{})}
 }
@@ -77,7 +79,7 @@ function identity(input,cfg,template){
   return createHash('sha256').update(bytes).update(cfg.model)
     .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,template.id])).digest('hex');
 }
-async function recognize(input){
+async function recognize(input,progress=()=>{}){
   const cfg=await settings();
   if(!cfg.key)throw Error('Сначала сохраните API-ключ Cloud.ru');
   if(typeof input.image!=='string')throw Error('Нужна фотография');
@@ -86,6 +88,7 @@ async function recognize(input){
   const hash=identity(input,cfg,template);
   const previous=(await tasks()).find(x=>x.hash===hash&&x.status==='done'&&Array.isArray(x.rows));
   if(previous&&!input.force){
+    progress('Кэш: используется уже готовый результат');
     return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
       warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
       comparison:previous.comparison||null,mineruTask:previous.mineruTask||null};
@@ -95,7 +98,7 @@ async function recognize(input){
     model:cfg.model,status:'processing',attempts:1,startedAt:new Date().toISOString()};
   await updateTask(task);
   try{
-    const result=await processPhoto({image:input.image,name:task.name,cfg,template,
+    const result=await processPhoto({image:input.image,name:task.name,cfg,template,progress,
       paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL,
       mineruUrl:process.env.TENSEI_MINERU_URL,mineruKey:process.env.TENSEI_MINERU_KEY});
     await fs.mkdir(sourceDir,{recursive:true});
@@ -146,6 +149,10 @@ async function excel(raw){
 async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
   catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
 const handleLegion=createLegionHandler({root,dataDir,json,send});
+const scanLibrary=createScanLibrary({dataDir,readBody:json,send,
+  process:async({image,name,templateId,progress,force})=>
+    recognize({image,name,templateId,force},progress)});
+
 const server=http.createServer(async(req,res)=>{
   try{
     if(!safeRequest(req))return send(res,403,{error:'Доступ только с локального компьютера'});
@@ -162,6 +169,13 @@ const server=http.createServer(async(req,res)=>{
       return res.end(await fs.readFile(path.join(root,filename)));
     }
     if(url.pathname.startsWith('/api/legion/'))return await handleLegion(req,res,url);
+    if(url.pathname.startsWith('/api/scans'))return await scanLibrary.handler(req,res,url);
+    if(req.method==='GET'&&url.pathname==='/api/analytics'){
+      const dataset=await loadLegionStats(dataDir);
+      const params=Object.fromEntries(['from','to','period','product','plate','compareFrom','compareTo']
+        .map(key=>[key,url.searchParams.get(key)||'']));
+      return send(res,200,analyzeTrips(dataset.trips,params,dataset.context));
+    }
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru});
@@ -183,6 +197,9 @@ const server=http.createServer(async(req,res)=>{
       const list=await listCloudModels(cfg.key);
       const chosen=list.includes(cfg.model);
       const suggested=MODELS.filter(m=>list.includes(m.id));
+      const extras=list.filter(id=>/vision|qwen.*vl|(^|[\/.-])vl([\/.-]|$)/i.test(id)&&
+        !suggested.some(x=>x.id===id)).slice(0,20).map(id=>({id,name:id}));
+      suggested.push(...extras);
       return send(res,200,{ok:true,selected:cfg.model,selectedAvailable:chosen,
         available:suggested,availableCount:list.length,
         reason:chosen?'Выбранная модель есть в каталоге API. Работа с фото ещё не проверена.':
