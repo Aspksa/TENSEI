@@ -234,6 +234,7 @@ async function readFleetImports(){
     index=[];
   }
   let count=0;
+  if(index.length>50)warnings.push('Сохранено больше 50 импортов: ранние CSV не входят в статистику. Итог НЕ является полным.');
   for(const entry of index.slice(0,50)){
     if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
     const file=path.join(dataDir,'legion','imports',entry.id+'.json');
@@ -269,9 +270,11 @@ async function fleetData(){
   const warnings=[...history.warnings];
   if(draftRead.error)warnings.push(draftRead.error);
   if(vehicleRead.error)warnings.push(vehicleRead.error);
+  if(draftRead.value.rows.length>2500)
+    warnings.push('Фотографий в реестре больше 2500: старые записи не участвуют в сверке. Итог НЕ является полным.');
   const result=unifyFleet({imports:history.imports,photoRows:draftRead.value.rows,
     vehicles:Array.isArray(vehicleRead.value)?vehicleRead.value:[]});
-  const partial=history.warnings.length>0||Boolean(draftRead.error);
+  const partial=warnings.length>0;
   return {...result,warnings,partial};
 }
 function fleetOptions(url){
