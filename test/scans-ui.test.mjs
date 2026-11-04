@@ -66,7 +66,7 @@ test('two new photos create distinct archive records and editing a scan never re
       await wait(()=>$('queuedCount').textContent.includes('1'));
       $('recognize').click();
       await wait(()=>$('progressStatus').textContent.includes('Сканов сохранено: '+scans.length)&&
-        !$('recognize').disabled,3800);
+        !$('addRow').disabled,3800);
     }
     await upload('страница 1.jpg');
     assert.equal($('metricRows').textContent,'1');
