@@ -9,7 +9,7 @@ import {prepareImage,FORMATS} from './lib/images.mjs';
 import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const dataDir=path.join(root,'data');
+const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
 const settingsPath=path.join(dataDir,'settings.json');
 const draftPath=path.join(dataDir,'draft.json');
 const prompt='Прочитай фото рукописного журнала отгрузок/взвешиваний. Верни ТОЛЬКО валидный JSON объект с массивом rows. Формат строки: {"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}. Каждое физическое событие/рейс — отдельная строка; не удаляй повторы ТС. Вес в килограммах, не тоннах. Извлекай значения строго из соответствующих колонок; не выдумывай сведения. Если символы неразборчивы, оставляй поле пустым/null и uncertain=true, объясни в note. Не вычисляй неизвестные значения в уме. Сохраняй порядок строк. Никакого markdown.';
