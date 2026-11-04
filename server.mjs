@@ -9,6 +9,7 @@ import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
 import {listCloudModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
+import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -208,6 +209,11 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='POST'&&url.pathname==='/api/quality'){
+      const input=await json(req);
+      const image=await improvePhoto(input.image,{enhance:false});
+      return send(res,200,{quality:image.report,format:image.format});
+    }
     if(req.method==='POST'&&url.pathname==='/api/recognize')return send(res,200,await recognize(await json(req)));
     if(req.method==='POST'&&url.pathname==='/api/export'){
       const rows=(await json(req)).rows;
