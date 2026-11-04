@@ -9,9 +9,9 @@ try {
   }
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'launch.ps1') -Destination (Join-Path $old 'scripts\launch.ps1')
   New-Item -ItemType Directory -Path (Join-Path $old 'data') -Force | Out-Null
-  New-Item -ItemType Directory -Path (Join-Path $old 'reports\Легион') -Force | Out-Null
-  Set-Content -LiteralPath (Join-Path $old 'data\draft.json') -Value '{"rows":[{"vehicle":"А123ВС"}]}' -Encoding UTF8
-  Set-Content -LiteralPath (Join-Path $old 'reports\Легион\report.txt') -Value 'private sample' -Encoding UTF8
+  New-Item -ItemType Directory -Path (Join-Path $old 'reports\Legion') -Force | Out-Null
+  Set-Content -LiteralPath (Join-Path $old 'data\draft.json') -Value '{"rows":[{"vehicle":"A123BC"}]}' -Encoding UTF8
+  Set-Content -LiteralPath (Join-Path $old 'reports\Legion\report.txt') -Value 'private sample' -Encoding UTF8
   & (Join-Path $old 'scripts\launch.ps1') -PreflightOnly
   if ($LASTEXITCODE -ne 0) { throw 'Preflight failed' }
   & (Join-Path $old 'scripts\transfer.ps1') -Mode Backup
@@ -21,8 +21,8 @@ try {
   & (Join-Path $new 'scripts\transfer.ps1') -Mode Restore -Archive $backup.FullName
   if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
   $draft = Get-Content -LiteralPath (Join-Path $new 'data\draft.json') -Raw
-  if ($draft -notmatch 'А123ВС') { throw 'Draft not restored correctly' }
-  $report = Get-Content -LiteralPath (Join-Path $new 'reports\Легион\report.txt') -Raw
+  if ($draft -notmatch 'A123BC') { throw 'Draft not restored correctly' }
+  $report = Get-Content -LiteralPath (Join-Path $new 'reports\Legion\report.txt') -Raw
   if ($report -notmatch 'private sample') { throw 'Report not restored correctly' }
   $original = (Get-FileHash -LiteralPath (Join-Path $new 'data\draft.json') -Algorithm SHA256).Hash
   & (Join-Path $new 'scripts\transfer.ps1') -Mode Restore -Archive $backup.FullName
