@@ -254,8 +254,8 @@ function fleetOptions(url){
   const product=String(url.searchParams.get('product')||'all').slice(0,120);
   const from=String(url.searchParams.get('from')||'');
   const to=String(url.searchParams.get('to')||'');
-  if((from&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(from))||
-    (to&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)))
+  if((from&&!/^\d{4}-\d{2}-\d{2}$/.test(from))||
+    (to&&!/^\d{4}-\d{2}-\d{2}$/.test(to)))
     throw Error('Даты фильтра должны быть ГГГГ-ММ-ДД');
   return {vehicle,product,from,to};
 }
@@ -444,7 +444,8 @@ const server=http.createServer(async(req,res)=>{
         products:filtered.products,daily:filtered.daily,hours:filtered.hours,
         trips:filtered.rows.slice(0,2000),review:data.review.slice(0,200),
         audit:data.totals,sourcePolicy:data.sourcePolicy,note:data.note,
-        verified:false,filters:options});
+        verified:false,filters:options,catalog:{vehicles:data.vehicles.map(v=>v.plate),
+          products:data.products.map(p=>p.name)},tripsTruncated:filtered.rows.length>2000});
     }
     if(req.method==='GET'&&url.pathname==='/api/fleet/export'){
       const data=await fleetData(),options=fleetOptions(url);
