@@ -5,7 +5,7 @@ const setBusy=flag=>{
   state.busy=flag;
   for(const id of ['legionCsvFile','legionMasterFile','legionGenerate','legionDownloadZip','legionExportMaster']){
     const el=$(id);if(el)el.disabled=flag||(id==='legionDownloadZip'&&!state.lastReport)||
-      (id==='legionGenerate'&&!state.importId);
+      (id==='legionGenerate'&&(!state.importId||!state.preview?.audit?.ready||!!state.preview?.errors?.length));
   }
 };
 function showPage(name){
@@ -143,8 +143,9 @@ function showUnknown(unknown){
     const button=document.createElement('button');button.type='button';button.textContent=item.plate;
     button.title='Из CSV: '+(item.csvDriver||'водитель не указан')+'. Заполните модель и водителя вручную.';
     button.onclick=()=>{
-      $('legionPlate').value=item.plate;$('legionModel').value='';
-      $('legionDriver').value='';
+      $('legionPlate').value=item.plate;
+      $('legionModel').value=item.suggestion?.model||'';
+      $('legionDriver').value=item.suggestion?.driver||'';
       $('legionPlate').scrollIntoView({behavior:'smooth',block:'center'});
       $('legionModel').focus();
     };
@@ -201,7 +202,7 @@ async function restorePreview(id){
   drawPreview(result);return result;
 }
 $('legionCsvFile').onchange=async event=>{
-  const files=[...event.target.files||[]];event.target.value='';
+  const files=[...(event.target.files||[])];event.target.value='';
   if(!files.length)return;
   if(files.length>8)return notice('За один пакет можно загрузить не больше 8 CSV.','error');
   if(files.some(file=>file.size>8*1024*1024))
@@ -232,6 +233,8 @@ $('legionCsvFile').onchange=async event=>{
 
 async function generate(){
   if(!state.importId||state.busy)return;
+  if(!state.preview?.audit?.ready||state.preview?.errors?.length)
+    return notice('Сначала исправьте критические замечания CSV и заполните базу ТС.','error');
   setBusy(true);
   $('legionStage').textContent='Формирую сводный Excel и отчёты по товарам…';
   $('legionOutputStatus').textContent='Формирую отчёты Excel и ZIP…';
