@@ -43,6 +43,11 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.equal(settings.models.length,5);
     assert.equal(settings.costMode,'auto');
     assert.equal(settings.autoPipeline,true);
+    assert.equal(settings.digitCellOcr,false);
+    r=await fetch(url+'/api/photo-groups');assert.equal(r.status,200);
+    assert.deepEqual((await r.json()).groups,[]);
+    r=await fetch(url+'/api/local-recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    assert.equal(r.status,400);
     r=await fetch(url+'/api/templates');assert.equal(r.status,200);
     assert.ok((await r.json()).templates.length>=2);
     r=await fetch(url+'/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
