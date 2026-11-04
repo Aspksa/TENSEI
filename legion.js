@@ -79,6 +79,7 @@ function drawBase(){
     const desc=document.createElement('span');desc.textContent=(v.model||'НЕТ МОДЕЛИ')+' · '+(v.driver||'НЕТ ВОДИТЕЛЯ');
     button.append(no,desc);
     button.onclick=()=>{
+      $('legionVehicleForm').closest('details').open=true;
       $('legionPlate').value=v.plate;
       $('legionModel').value=v.model||'';
       $('legionDriver').value=v.driver||'';
@@ -143,6 +144,7 @@ function showUnknown(unknown){
     const button=document.createElement('button');button.type='button';button.textContent=item.plate;
     button.title='Из CSV: '+(item.csvDriver||'водитель не указан')+'. Заполните модель и водителя вручную.';
     button.onclick=()=>{
+      $('legionVehicleForm').closest('details').open=true;
       $('legionPlate').value=item.plate;
       $('legionModel').value=item.suggestion?.model||'';
       $('legionDriver').value=item.suggestion?.driver||'';
