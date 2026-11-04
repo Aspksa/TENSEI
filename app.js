@@ -212,7 +212,8 @@ $('settingsForm').addEventListener('submit',async event=>{
     const result=await api('settings',{
       key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked,
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
-      paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked
+      paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
+      costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
     state.hasKey=result.hasKey;
     $('apiKey').value='';
@@ -474,6 +475,8 @@ async function initialize(){
     $('paddle').checked=cfg.paddle===true;
     $('chandra').checked=cfg.chandra===true;
     $('mineru').checked=cfg.mineru===true;
+    $('costMode').value=cfg.costMode||'off';
+    $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey
