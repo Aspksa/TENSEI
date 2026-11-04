@@ -86,3 +86,6 @@ tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 #exportReadiness{margin:9px 22px;color:var(--muted)}
 .task-item .button{margin-top:5px}
 @media(max-width:600px){.crop-review-title{display:block}.crop-review-title span{display:block}.cell-review-toolbar{align-items:flex-start;flex-direction:column}}
+
+.row-photo{margin-right:5px;padding:4px 8px;background:#eef7ff;color:#165a92;border:1px solid #b7d6ec;border-radius:7px;font-size:12px}
+.row-photo:hover{background:#dbedfc}
