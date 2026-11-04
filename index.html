@@ -81,6 +81,7 @@
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <button id="localRead" class="button button-outline" type="button">Прочитать ячейки без Cloud.ru</button>
+              <p id="rapidOCRStatus" class="help" role="status">RapidOCR CPU: проверяю локальный сервис…</p>
               <button id="perspectivePreview" class="button button-outline" type="button">Выровнять лист · предпросмотр</button>
               <div id="perspectiveResult" class="perspective-result" hidden>
                 <p id="perspectiveNote" class="help">Исправленная геометрия не заменяет исходник автоматически.</p>
@@ -269,6 +270,11 @@
                 <button id="legionDownloadZip" type="button" class="button button-outline" disabled>Скачать ZIP</button>
               </div>
               <p id="legionOutputStatus" class="help"></p>
+              <div class="legion-reconcile">
+                <button id="legionReconcile" type="button" class="button button-outline">Сверить фото и CSV · без изменения данных</button>
+                <p class="help">Сравниваются строки сохранённого черновика фотографий и выбранного CSV. Требуются дата, время, госномер и нетто.</p>
+                <div id="legionReconcileResults" class="legion-audit" role="status" hidden></div>
+              </div>
             </div>
           </article>
           <article class="card legion-card">
