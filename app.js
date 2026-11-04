@@ -53,6 +53,20 @@ function inspect(items){
     return {row,index,issues};
   });
 }
+let lastVerifiedExcelSignature='',verifiedExcelTimer=null;
+function scheduleVerifiedExcel(){
+  clearTimeout(verifiedExcelTimer);
+  if(state.busy||!$('autoExcel')?.checked||state.rows.length===0)return;
+  const checked=inspect(state.rows);
+  if(checked.some(({row,issues})=>!row.reviewed||issues.length))return;
+  const signature=JSON.stringify(state.rows);
+  if(signature===lastVerifiedExcelSignature)return;
+  verifiedExcelTimer=setTimeout(()=>{
+    if(state.busy||!$('autoExcel').checked||state.rows.some(r=>!r.reviewed)||inspect(state.rows).some(x=>x.issues.length))return;
+    lastVerifiedExcelSignature=signature;
+    $('download').click();
+  },850);
+}
 function updateSummary(){
   const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length).length;
   const kilos=state.rows.reduce((sum,row)=>{const v=asWeight(row.net);return sum+(Number.isFinite(v)?v:0)},0);
@@ -78,6 +92,7 @@ function queueSave(){
 }
 function updateRecords(){
   updateSummary();
+  scheduleVerifiedExcel();
   renderTable();
   renderAudit();
   queueSave();
@@ -215,6 +230,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
       localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
+      autoPipeline:$('autoPipeline').checked,
       gridSegmentation:$('gridSegmentation').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
@@ -352,7 +368,9 @@ $('recognize').onclick=async()=>{
   };
   drawJoke();
   const jokeTimer=setInterval(drawJoke,4500);
-  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
+  const updateSteps=step=>{const nodes=[...$('photoStatusSteps').children];nodes.forEach((node,i)=>{node.classList.toggle('active',i===step);node.classList.toggle('completed',i<step)});};
+  updateSteps(0);
+  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
   try{
     for(const [index,file] of batch.entries()){
       $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
@@ -375,12 +393,14 @@ $('recognize').onclick=async()=>{
           $('comparisonText').textContent=result.comparison.raw;
         }
         done++;
+        updateSteps(4);
         updateRecords();
         await refreshTasks().catch(()=>{});
       }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
     }
     state.queue.push(...failed);
     $('progressBar').style.width='100%';
+    updateSteps(failed.length?3:4);
     $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
     if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
     else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
@@ -393,6 +413,10 @@ $('recognize').onclick=async()=>{
 };
 $('search').oninput=renderTable;
 $('onlyIssues').onchange=renderTable;
+$('reviewIssues').onclick=()=>{$('onlyIssues').checked=true;renderTable();$('results').scrollIntoView({behavior:'smooth',block:'start'});};
+$('autoExcel').onchange=()=>{if($('autoExcel').checked)scheduleVerifiedExcel();};
+$('navSettings').onclick=()=>{$('settingsDetails').open=true;};
+$('navReview').onclick=()=>{$('onlyIssues').checked=true;renderTable();};
 $('addRow').onclick=()=>{
   if(state.busy)return;
   state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
@@ -563,7 +587,8 @@ async function initialize(){
     $('localVl').checked=cfg.localVl===true;
     $('cvPreprocess').checked=cfg.cvPreprocess===true;
     $('gridSegmentation').checked=cfg.gridSegmentation===true;
-    $('costMode').value=cfg.costMode||'off';
+    $('autoPipeline').checked=cfg.autoPipeline!==false;
+    $('costMode').value=cfg.costMode||'auto';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
