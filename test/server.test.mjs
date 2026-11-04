@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,mkdir,writeFile} from 'node:fs/promises';
+import sharp from 'sharp';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 async function start(){
@@ -33,6 +34,9 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.match(home,/photoStatusSteps/);
     assert.match(home,/humorCaption/);
     assert.match(home,/autoExcel/);
+    assert.match(home,/cropPreview/);
+    assert.match(home,/cellPicker/);
+    assert.match(home,/exportReadiness/);
     assert.match(home,/autoPipeline/);
     assert.match(home,/Авто — локально/);
     for(const file of ['app.js','styles.css','humor-messages.js']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
@@ -91,6 +95,37 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.equal(r.status,200);
     r=await fetch(url+'/api/draft');
     assert.equal((await r.json()).rows[0].net,28000);
+    r=await fetch(url+'/api/export',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({verifiedOnly:true,rows:[{vehicle:'A123BC',time:'08:20',
+        tare:12000,gross:40000,net:28000,reviewed:false}]})});
+    assert.equal(r.status,409,'server must reject unreviewed rows for automatic Excel');
+    r=await fetch(url+'/api/export',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({verifiedOnly:true,rows:[{vehicle:'A123BC',time:'08:20',
+        tare:12000,gross:40000,net:29000,reviewed:true}]})});
+    assert.equal(r.status,409,'server must reject inconsistent weights');
+    r=await fetch(url+'/api/export',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({verifiedOnly:true,rows:[{vehicle:'A123BC',time:'08:20',
+        tare:12000,gross:40000,net:28000,reviewed:true}]})});
+    assert.equal(r.status,200,'verified rows can be exported');
+    assert.equal(Buffer.from(await r.arrayBuffer()).subarray(0,2).toString(),'PK');
+    const sourceId='11111111-1111-4111-8111-111111111111';
+    await mkdir(path.join(dataDir,'sources'),{recursive:true});
+    await writeFile(path.join(dataDir,'sources',sourceId+'.jpg'),
+      await sharp({create:{width:800,height:1000,channels:3,background:'#fff'}}).jpeg().toBuffer());
+    r=await fetch(url+'/api/row-crop',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sourceId,bbox:[.2,.2,.8,.3]})});
+    assert.equal(r.status,200);
+    const crop=await r.json();
+    assert.equal(crop.verified,false);
+    assert.match(crop.image,/^data:image\/jpeg;base64,/);
+    const size=await sharp(Buffer.from(crop.image.split(',')[1],'base64')).metadata();
+    assert.ok(size.width>400&&size.height>30);
+    r=await fetch(url+'/api/row-crop',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sourceId,bbox:[.8,.8,.2,.1]})});
+    assert.equal(r.status,400);
     r=await fetch(url+'/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:[{vehicle:'A123BC',time:'08:20',tare:12000,gross:40000,net:28000}]})});
     assert.equal(r.status,200);
     const bytes=Buffer.from(await r.arrayBuffer());
