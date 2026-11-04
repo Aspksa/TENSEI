@@ -108,8 +108,12 @@ function cell(index,key,row){
       status('Неверное число в строке '+(index+1)+'. Используйте цифры, пробел и десятичную запятую.','error');
       input.value=text(row[key]);return;
     }
+    const previousValue=row[key];
     row[key]=['tare','gross','net'].includes(key)?(value===''?null:asWeight(value)):value;
     if(key==='vehicle')row.vehicle=text(row.vehicle).toUpperCase();
+    // A previously reviewed row needs a new manual review after any edit.
+    if(previousValue!==row[key]){row.reviewed=false;
+      if(key==='vehicle')row.vehicleUnlisted=true;}
     if(['tare','gross'].includes(key)&&row.net===null&&Number.isFinite(asWeight(row.gross))&&Number.isFinite(asWeight(row.tare))&&row.gross>=row.tare)row.net=row.gross-row.tare;
     updateRecords();
   });
