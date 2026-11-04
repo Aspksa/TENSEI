@@ -485,6 +485,31 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='GET'&&url.pathname==='/api/diagnostics'){
+      const checks={},warnings=[];
+      const cfg=await settings();
+      checks.cloudKeyConfigured=Boolean(cfg.key);
+      if(!cfg.key)warnings.push('Не указан API-ключ Cloud.ru: фотография попадёт в очередь, но облачное распознавание не начнётся');
+      try{const d=await getDraft();checks.savedPhotoRows=d.rows.length}
+      catch(e){checks.savedPhotoRows=null;warnings.push('Черновик не читается: '+e.message)}
+      try{const t=await tasks();checks.photoTasks=t.length;
+        checks.lastTask=t[0]?{status:t[0].status,phase:t[0].phase||'',
+          error:String(t[0].error||'').slice(0,150)}:null}
+      catch(e){checks.photoTasks=null;warnings.push('История фото не читается: '+e.message)}
+      try{const imports=JSON.parse(await fs.readFile(path.join(dataDir,'legion','imports-index.json'),'utf8'));
+        checks.legionImports=Array.isArray(imports)?imports.length:0;
+        if(!Array.isArray(imports))warnings.push('Список импортов «Легиона» повреждён')}
+      catch(e){checks.legionImports=0;
+        if(e.code!=='ENOENT')warnings.push('Список CSV-импортов не читается')}
+      const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
+      checks.rapidOCR=rapid.available?'ready':'optional-offline';
+      checks.pythonRequired=false;
+      checks.excelRequiresCloud=false;
+      checks.statisticsRequiresCloud=false;
+      return send(res,200,{ok:true,checks,warnings,
+        explanation:'Проверка локальная и не расходует токены Cloud.ru. Настоящее соединение проверяется отдельно в настройках.',
+        version:'TENSEI 0.5 · stability update'});
+    }
     if(req.method==='GET'&&url.pathname==='/api/ocr-health'){
       const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
       return send(res,200,{rapid,localOnly:true,cloudCalls:0});
