@@ -84,3 +84,40 @@ def detect_grid(image):
             "column_boxes": columns, "confidence": confidence,
             "method": "opencv-ruling",
             "horizontal_lines": len(y_lines), "vertical_lines": len(x_lines)}
+
+
+def detect_text_bands(image):
+    """Find tentative text-row bands without ruled lines; never claim cells."""
+    import cv2
+    if image is None or image.ndim != 3:
+        raise ValueError("Expected RGB image")
+    height, width = image.shape[:2]
+    if min(height, width) < 200:
+        return {"cells": [], "row_boxes": [], "column_boxes": [],
+                "method": "ink-projection", "confidence": 0.0}
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, 31, 13)
+    # Suppress thin long horizontal rules before row projection.
+    long_lines = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
+                  cv2.getStructuringElement(cv2.MORPH_RECT, (max(45, width // 8), 1)))
+    ink = cv2.subtract(mask, long_lines)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (max(8, width // 85), 2))
+    joined = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kernel)
+    density = np.count_nonzero(joined, axis=1) / width
+    active = np.flatnonzero((density > .012) & (density < .72))
+    if len(active) == 0:
+        return {"cells": [], "row_boxes": [], "column_boxes": [],
+                "method": "ink-projection", "confidence": 0.0}
+    bands = np.split(active, np.flatnonzero(np.diff(active) > max(2, height // 330)) + 1)
+    result = []
+    for b in bands:
+        top, bottom = int(b[0]), int(b[-1])
+        if bottom - top < max(7, height // 210) or bottom - top > height * .10:
+            continue
+        y1, y2 = max(0, top-3)/height, min(height, bottom+4)/height
+        result.append([0.0, round(y1, 6), 1.0, round(y2, 6)])
+    return {"cells": [], "row_boxes": result[:100], "column_boxes": [],
+            "method": "ink-projection",
+            "confidence": None, "unverified": True}
