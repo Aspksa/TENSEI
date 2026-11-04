@@ -213,7 +213,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked,
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
-      localText:$('localText').checked,localVl:$('localVl').checked,
+      localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
     state.hasKey=result.hasKey;
@@ -492,6 +492,7 @@ async function initialize(){
     $('mineru').checked=cfg.mineru===true;
     $('localText').checked=cfg.localText===true;
     $('localVl').checked=cfg.localVl===true;
+    $('cvPreprocess').checked=cfg.cvPreprocess===true;
     $('costMode').value=cfg.costMode||'off';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
