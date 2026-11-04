@@ -431,8 +431,9 @@ $('search').oninput=renderTable;
 $('onlyIssues').onchange=renderTable;
 $('reviewIssues').onclick=()=>{$('onlyIssues').checked=true;renderTable();$('results').scrollIntoView({behavior:'smooth',block:'start'});};
 $('autoExcel').onchange=()=>{if($('autoExcel').checked)scheduleVerifiedExcel();};
-$('navSettings').onclick=()=>{$('settingsDetails').open=true;};
-$('navReview').onclick=()=>{$('onlyIssues').checked=true;renderTable();};
+$('navSettings').onclick=()=>{$('navPhoto').click();$('settingsDetails').open=true;};
+document.querySelector('.toplink')?.addEventListener('click',()=>{$('settingsDetails').open=true;});
+$('navReview').onclick=()=>{$('navPhoto').click();$('onlyIssues').checked=true;renderTable();};
 $('addRow').onclick=()=>{
   if(state.busy)return;
   state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
