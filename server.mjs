@@ -92,7 +92,10 @@ async function recognize(input){
   }
   const id=createHash('sha256').update(hash+Date.now()).digest('hex').slice(0,24);
   const task={id,name:String(input.name||'Фото').slice(0,160),hash,templateId:template.id,
-    model:cfg.model,status:'processing',attempts:1,startedAt:new Date().toISOString()};
+    model:cfg.model,status:'processing',phase:'Загрузка принята',progress:10,trace:[],attempts:0,startedAt:new Date().toISOString()};
+  const stages={'Подготовка изображения':20,'PaddleOCR: анализ ячеек':35,'Cloud.ru: анализ страницы':55,'Страница не прочиталась — распознаю увеличенные части':65,'Chandra OCR: независимое чтение':78,'MinerU: создание задачи для независимого разбора':88,'Формирование результата':93};
+  const trace=[];
+  const progress=stage=>{const module=stage.startsWith('Cloud.ru')||stage.startsWith('Страница')?'Cloud.ru':stage.startsWith('Paddle')?'PaddleOCR':stage.startsWith('Chandra')?'Chandra OCR':stage.startsWith('MinerU')?'MinerU':'TENSEI';trace.push({at:new Date().toISOString(),stage,module});void updateTask({...task,phase:stage,progress:stages[stage]||50,trace:[...trace]}).catch(()=>{});};
   await updateTask(task);
   try{
     const result=await processPhoto({image:input.image,name:task.name,cfg,template,
@@ -104,10 +107,10 @@ async function recognize(input){
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts};
-    await updateTask({...task,...output,status:'done',finishedAt:new Date().toISOString()});
+    await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
     return output;
   }catch(e){
-    await updateTask({...task,status:'error',error:String(e.message||e).slice(0,260),finishedAt:new Date().toISOString()});
+    await updateTask({...task,status:'error',phase:'Ошибка',progress:100,trace,error:String(e.message||e).slice(0,260),finishedAt:new Date().toISOString()});
     throw e;
   }
 }
