@@ -1,7 +1,7 @@
 const el=id=>document.getElementById(id);
 const labels={workspace:'Распознавание фотографий',journal:'Реестр взвешиваний',audit:'Проверка ошибок',settings:'Подключение Cloud.ru'};
 let records=[],files=[],busy=false,saveTimer=null,rev=0,previewUrl=null;
-const fields=['time','vehicle','driver','tare','gross','net'];
+const fields=['time','vehicle','driver','tare','gross','net','note'];
 const n=x=>x===null||x===undefined||String(x).trim()===''?null:Number(String(x).trim().replace(/\s/g,'').replace(',','.'));
 function setNotice(message,type='info'){el('notice').hidden=!message;el('notice').textContent=message||'';el('notice').dataset.type=type}
 async function request(route,body,method='POST'){
@@ -86,6 +86,7 @@ function renderTable(){
     let cell=document.createElement('td');cell.textContent=i+1;tr.append(cell);
     fields.forEach(k=>tr.append(makeCell(r,i,k)));
     cell=document.createElement('td');cell.textContent=String(r.source||'');tr.append(cell);
+    cell=document.createElement('td');const check=document.createElement('input');check.type='checkbox';check.checked=!r.uncertain;check.title='Подтвердить ручную сверку с фотографией';check.setAttribute('aria-label','Строка '+(i+1)+' проверена');check.onchange=()=>{r.uncertain=!check.checked;changed();renderTable()};cell.append(check);tr.append(cell);
     cell=document.createElement('td');cell.title=issues.join('; ');
     const status=document.createElement('span');status.className='flag';status.textContent=issues.length?'⚠ '+issues.length+' замеч.':'✓ OK';cell.append(status);tr.append(cell);
     cell=document.createElement('td');const remove=document.createElement('button');remove.className='row-remove';remove.textContent='×';remove.title='Удалить строку';remove.onclick=()=>{if(confirm('Удалить строку '+(i+1)+'?')){records.splice(i,1);changed();renderTable()}};cell.append(remove);tr.append(cell);chunk.append(tr);
@@ -110,7 +111,7 @@ function renderAudit(){
 }
 el('search').oninput=()=>renderTable();el('onlyIssues').onchange=()=>renderTable();
 el('addRow').onclick=()=>{records.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,source:'Вручную',note:'',uncertain:false});changed();renderTable()};
-el('clear').onclick=async()=>{if(!confirm('Удалить все строки реестра и сохранённый черновик?'))return;records=[];clearTimeout(saveTimer);rev++;updateStats();renderTable();renderAudit();try{await request('draft',undefined,'DELETE')}catch(e){setNotice(e.message)}};
+el('clear').onclick=async()=>{if(busy)return setNotice('Дождитесь завершения распознавания перед очисткой.');if(!confirm('Удалить все строки реестра и сохранённый черновик?'))return;records=[];clearTimeout(saveTimer);rev++;updateStats();renderTable();renderAudit();try{await request('draft',undefined,'DELETE')}catch(e){setNotice(e.message)}};
 el('download').onclick=async()=>{if(!records.length)return setNotice('В реестре пока нет строк');try{const blob=await request('export',{rows:records}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TENSEI.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),6000)}catch(e){setNotice('Excel: '+e.message)}};
 const fileAllowed=name=>/\.(jpe?g|png|webp|gif|tiff?|bmp|avif|heic|heif|svg)$/i.test(name);
 function addFiles(add){
