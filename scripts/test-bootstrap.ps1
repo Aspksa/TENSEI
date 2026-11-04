@@ -8,7 +8,7 @@ try {
     Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) $file) -Destination (Join-Path $source $file)
   }
   foreach ($file in @('launch.ps1','offline-pack.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path $source 'scripts' $file)
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination (Join-Path (Join-Path $source 'scripts') $file)
   }
   Write-Host 'Cold install in isolated temporary folder:'
   & (Join-Path $source 'scripts\launch.ps1') -InstallOnly
