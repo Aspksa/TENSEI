@@ -658,7 +658,9 @@ async function showReportCells(task){
   const report=await api('photo-report/'+task.reportId,undefined,'GET');
   if(!report.sourceId)throw Error('У отчёта нет исходной фотографии');
   showSource({sourceId:report.sourceId,source:task.name,bbox:null});
-  reviewCells=(report.layout?.cellBoxes||[]).filter(b=>
+  const tentative=!(report.layout?.cellBoxes||[]).length;
+  const candidates=tentative?report.tentativeCells?.boxes:(report.layout?.cellBoxes||[]);
+  reviewCells=(candidates||[]).filter(b=>
     Array.isArray(b)&&b.length===4&&b.every(v=>typeof v==='number'&&v>=0&&v<=1)&&b[2]>b[0]&&b[3]>b[1]).slice(0,700);
   reviewSourceId=report.sourceId;
   const issues=[
@@ -671,11 +673,12 @@ async function showReportCells(task){
   const picker=$('cellPicker');picker.replaceChildren();
   for(let i=0;i<reviewCells.length;i++){
     const option=document.createElement('option');option.value=String(i);
-    option.textContent='Ячейка '+(i+1);picker.append(option);
+    option.textContent=(tentative?'Предположительная область ':'Ячейка ')+(i+1);picker.append(option);
   }
   gridBoxes=reviewCells;
   drawPreviewGrid();
-  if(reviewCells.length)void showRowCrop(reviewSourceId,reviewCells[0],'Ячейка 1');
+  if(reviewCells.length)void showRowCrop(reviewSourceId,reviewCells[0],
+    tentative?'Предположительная область 1':'Ячейка 1');
   else $('cropStatus').textContent='У этого фото нет надёжно обнаруженных ячеек.';
   $('upload').scrollIntoView({behavior:'smooth',block:'start'});
 }
