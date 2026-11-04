@@ -1,6 +1,6 @@
 {
   "name": "tensei",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Portable handwriting journal OCR via Cloud.ru",
   "type": "module",

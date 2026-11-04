@@ -34,6 +34,15 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     const settings=await r.json();
     assert.equal(settings.model,'qwen/qwen3-vl-235b-a22b-instruct');
     assert.equal(settings.models.length,5);
+    r=await fetch(url+'/api/templates');assert.equal(r.status,200);
+    assert.ok((await r.json()).templates.length>=2);
+    r=await fetch(url+'/api/templates',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'Мой журнал',columns:'Время, Автомобиль, Тара, Брутто, Нетто'})});
+    assert.equal(r.status,200);
+    const added=await r.json();assert.ok(added.template.id.startsWith('user-'));
+    r=await fetch(url+'/api/templates');assert.ok((await r.json()).templates.some(x=>x.id===added.template.id));
+    r=await fetch(url+'/api/tasks');assert.equal(r.status,200);assert.deepEqual((await r.json()).tasks,[]);
+
     r=await fetch(url+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({key:'test-api-key-not-real',model:'Qwen/Qwen3.5-397B-A17B',fallback:true})});
     assert.equal(r.status,200);

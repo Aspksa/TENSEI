@@ -105,6 +105,7 @@ function renderTable(){
   const fragment=document.createDocumentFragment();
   for(const {row,index,issues} of selection){
     const tr=document.createElement('tr');
+    tr.addEventListener('click',()=>showSource(row));
     tr.dataset.row=String(index);if(issues.length)tr.className='issue-row';
     const number=document.createElement('td');number.textContent=String(index+1);tr.append(number);
     for(const key of columns)tr.append(cell(index,key,row));
@@ -209,7 +210,9 @@ $('settingsForm').addEventListener('submit',async event=>{
   const btn=$('saveSettings');btn.disabled=true;
   try{
     const result=await api('settings',{
-      key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked
+      key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked,
+      enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
+      paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked
     });
     state.hasKey=result.hasKey;
     $('apiKey').value='';
@@ -255,10 +258,21 @@ function showPreview(file){
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
   const img=$('previewImage');img.hidden=true;$('previewEmpty').hidden=false;
+  $('highlightBox').hidden=true;
   $('previewFilename').textContent='';
   if(!file)return;
   state.previewUrl=URL.createObjectURL(file);
   $('previewFilename').textContent=file.name;
+  const ticket=state.previewUrl;
+  $('qualityStatus').textContent='Проверяю разрешение и качество фотографии локально…';
+  fileData(file).then(image=>api('quality',{image}))
+    .then(result=>{
+      if(state.previewUrl!==ticket)return;
+      $('qualityStatus').textContent=result.quality.warnings?.length?
+        'Качество: '+result.quality.warnings.join(' · '):
+        'Качество: '+result.quality.width+' × '+result.quality.height+
+        ' пикселей; явных проблем не обнаружено.';
+    }).catch(e=>{if(state.previewUrl===ticket)$('qualityStatus').textContent='Проверка качества не удалась: '+e.message});
   img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true};
   img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;$('previewEmpty').textContent='Предпросмотр этого формата недоступен'};
   img.src=state.previewUrl;
@@ -296,12 +310,24 @@ $('recognize').onclick=async()=>{
       $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
       showPreview(file);
       try{
-        const result=await api('recognize',{image:await fileData(file),name:file.name});
-        state.rows.push(...result.rows);
+        const result=await api('recognize',{image:await fileData(file),name:file.name,
+          templateId:$('templateSelect').value,force:$('forceReprocess')?.checked===true});
+        if(!state.rows.some(x=>x.sourceId&&x.sourceId===result.sourceId))
+          state.rows.push(...result.rows);
         usedModel=result.model||usedModel;
+        const warnings=[...(result.warnings||[])];
+        if(result.cached)warnings.unshift('Страница взята из кэша, повторная плата за распознавание не требуется.');
+        if(result.quality?.warnings?.length||warnings.length)
+          $('qualityStatus').textContent=[...new Set(warnings)].slice(0,4).join(' · ');
+        else $('qualityStatus').textContent='Основные показатели качества фото без автоматических замечаний.';
+        if(result.comparison?.raw){
+          $('comparisonDetails').hidden=false;
+          $('comparisonText').textContent=result.comparison.raw;
+        }
         done++;
         updateRecords();
-      }catch(e){failed.push(file);failures.add(e.message)}
+        await refreshTasks().catch(()=>{});
+      }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
     }
     state.queue.push(...failed);
     $('progressBar').style.width='100%';
@@ -345,12 +371,97 @@ $('clearData').onclick=async()=>{
   }catch(e){status('Не удалось очистить черновик: '+e.message,'error')}
   finally{control.disabled=false}
 };
+async function refreshTasks(){
+  const result=await api('tasks',undefined,'GET');
+  const tasks=(result.tasks||[]).slice(0,35);
+  const box=$('taskHistory');box.replaceChildren();
+  $('taskCount').textContent=tasks.length?'('+tasks.length+')':'';
+  for(const task of tasks){
+    const item=document.createElement('div');item.className='task-item';
+    const name=document.createElement('strong');name.textContent=task.name||'Фото';
+    const meta=document.createElement('small');
+    meta.textContent=task.status==='done'?'Готово · '+(task.rowCount||0)+' строк'+(task.model?' · '+task.model:''):
+      task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
+    item.append(name,meta);
+    if(task.mineruTask?.taskId){
+      const action=document.createElement('button');action.className='button button-outline';
+      action.type='button';action.textContent='Статус MinerU';
+      action.onclick=async()=>{
+        action.disabled=true;
+        try{
+          const state=await api('mineru/'+encodeURIComponent(task.mineruTask.taskId),undefined,'GET');
+          meta.textContent=(meta.textContent||'')+' · MinerU: '+state.status;
+          action.textContent='Обновить MinerU';
+        }catch(e){meta.textContent=(meta.textContent||'')+' · MinerU: '+e.message}
+        finally{action.disabled=false}
+      };
+      item.append(action);
+    }
+    box.append(item);
+  }
+}
+async function refreshTemplates(selected){
+  const result=await api('templates',undefined,'GET');
+  const target=$('templateSelect'),old=selected||target.value||'weights';
+  target.replaceChildren();
+  for(const template of result.templates||[]){
+    const option=document.createElement('option');
+    option.value=template.id;option.textContent=template.name;target.append(option);
+  }
+  if(Array.from(target.options).some(o=>o.value===old))target.value=old;
+}
+$('saveTemplate').onclick=async()=>{
+  const button=$('saveTemplate');button.disabled=true;
+  try{
+    const result=await api('templates',{name:$('templateName').value,columns:$('templateColumns').value});
+    await refreshTemplates(result.template.id);
+    status('Шаблон «'+result.template.name+'» сохранён.','success');
+  }catch(e){status('Шаблон не сохранился: '+e.message,'error')}
+  finally{button.disabled=false}
+};
+function showSource(row){
+  if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';return}
+  const src='/api/source/'+row.sourceId;
+  const img=$('previewImage'),overlay=$('highlightBox');
+  $('previewFilename').textContent=row.source||'Сохранённый снимок';
+  $('previewEmpty').hidden=true;
+  img.hidden=false;overlay.hidden=true;
+  const update=()=>{
+    overlay.hidden=true;
+    if(!Array.isArray(row.bbox)||row.bbox.length!==4||!img.naturalWidth||!img.naturalHeight)return;
+    const area=$('previewSurface');
+    const displayWidth=area.clientWidth,displayHeight=area.clientHeight;
+    const scale=Math.min(displayWidth/img.naturalWidth,displayHeight/img.naturalHeight);
+    const x0=(displayWidth-img.naturalWidth*scale)/2;
+    const y0=(displayHeight-img.naturalHeight*scale)/2;
+    const [x1,y1,x2,y2]=row.bbox;
+    if(![x1,y1,x2,y2].every(v=>Number.isFinite(v)&&v>=0&&v<=1))return;
+    Object.assign(overlay.style,{
+      left:(x0+x1*img.naturalWidth*scale)+'px',
+      top:(y0+y1*img.naturalHeight*scale)+'px',
+      width:((x2-x1)*img.naturalWidth*scale)+'px',
+      height:((y2-y1)*img.naturalHeight*scale)+'px'
+    });
+    overlay.hidden=false;
+  };
+  img.onload=update;img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;overlay.hidden=true};
+  if(img.getAttribute('src')!==src)img.src=src;
+  else if(img.complete)update();
+  $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
+}
+
 async function initialize(){
   updateSummary();renderTable();renderAudit();drawQueue();
+  await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{})]);
   try{
     const cfg=await api('settings',undefined,'GET');
     populateModels(cfg.models,cfg.model);
     $('fallback').checked=cfg.fallback!==false;
+    $('enhance').checked=cfg.enhance!==false;
+    $('cropRecovery').checked=cfg.cropRecovery!==false;
+    $('paddle').checked=cfg.paddle===true;
+    $('chandra').checked=cfg.chandra===true;
+    $('mineru').checked=cfg.mineru===true;
     state.hasKey=Boolean(cfg.hasKey);
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey

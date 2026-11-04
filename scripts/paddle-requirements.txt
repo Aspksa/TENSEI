@@ -1,0 +1,7 @@
+# Optional: not installed by TENSEI.bat; PaddlePaddle wheels depend on CPU/GPU and OS.
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+numpy>=1.24,<3
+pillow>=10,<13
+paddleocr>=3.7,<3.8
+# Install suitable paddlepaddle runtime separately using official PaddlePaddle instructions.
