@@ -19,6 +19,7 @@ import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {unifyFleet,fleetFiltered} from './lib/fleet-statistics.mjs';
 import {fleetStatisticsXlsx} from './lib/fleet-excel.mjs';
+import {auditStorage} from './lib/system-audit.mjs';
 import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
@@ -508,6 +509,10 @@ const server=http.createServer(async(req,res)=>{
         if(!Array.isArray(imports))warnings.push('Список импортов «Легиона» повреждён')}
       catch(e){checks.legionImports=0;
         if(e.code!=='ENOENT')warnings.push('Список CSV-импортов не читается')}
+      const storageAudit=await auditStorage(dataDir);
+      checks.storage=storageAudit.counts;
+      checks.storageHealthy=storageAudit.ok;
+      warnings.push(...storageAudit.findings.map(f=>f.code+': '+f.detail).slice(0,12));
       const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
       checks.rapidOCR=rapid.available?'ready':'optional-offline';
       checks.pythonRequired=false;
