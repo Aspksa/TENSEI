@@ -82,7 +82,7 @@
                     <button class="button button-outline" id="checkConnection" type="button">Проверить подключение</button>
                   </div>
                 </div>
-                <details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
+                <div class="field-row"><label class="field"><span>Экономия ИИ</span><select id="costMode"><option value="off">Выкл. — старый режим</option><option value="economy">Экономный — Qwen VL 8B</option><option value="balanced">Баланс — Qwen VL 30B</option><option value="quality">Точный — основная модель</option></select></label><label class="field"><span>Лимит облачных запросов на фото</span><select id="maxCloudCalls"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label></div><p class="help">Похожие фотографии только помечаются: их нельзя безопасно считать дублями без проверки чисел. Локальные OCR-модули работают, если установлены отдельно.</p><details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
 <div class="advanced-options">
 <label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
 <label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
