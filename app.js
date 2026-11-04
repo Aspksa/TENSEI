@@ -1,5 +1,6 @@
 const $=id=>document.getElementById(id);
-const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
+const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),
+  previewUrl:null,hasKey:false,activeScanId:null};
 const columns=['time','vehicle','driver','tare','gross','net','note'];
 const titles={time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
 
@@ -61,19 +62,32 @@ function updateSummary(){
   $('auditCount').textContent=numIssues;
   $('download').disabled=state.rows.length===0||state.busy;
 }
+function saveCurrentRows(version=state.revision){
+  clearTimeout(state.saveTimer);state.saveTimer=null;
+  const scanId=state.activeScanId,copy=state.rows.map(x=>({...x}));
+  state.savePending=state.savePending.catch(()=>{}).then(async()=>{
+    const res=scanId?await api('scans/'+scanId+'/rows',{rows:copy}):
+      await api('draft',{rows:copy});
+    if(version===state.revision)$('saveStatus').textContent=scanId?
+      'Скан сохранён в локальной библиотеке':'Черновик сохранён локально';
+    return res;
+  }).catch(e=>{
+    if(version===state.revision){
+      $('saveStatus').textContent='Не удалось сохранить';
+      status('Ошибка записи строк: '+e.message,'error');
+    }
+  });
+  return state.savePending;
+}
 function queueSave(){
-  state.revision++;
-  $('saveStatus').textContent='Изменения ещё не сохранены';
+  const version=++state.revision;
+  $('saveStatus').textContent='Сохраняю изменения локально…';
   clearTimeout(state.saveTimer);
-  state.saveTimer=setTimeout(()=>{
-    const version=state.revision;
-    const copy=state.rows.map(x=>({...x}));
-    state.savePending=state.savePending.catch(()=>{}).then(async()=>{
-      const res=await api('draft',{rows:copy});
-      if(version===state.revision)$('saveStatus').textContent='Сохранено локально';
-      return res;
-    }).catch(e=>{if(version===state.revision){$('saveStatus').textContent='Не удалось сохранить';status('Ошибка сохранения черновика: '+e.message,'error')}});
-  },550);
+  state.saveTimer=setTimeout(()=>saveCurrentRows(version),500);
+}
+async function flushSave(){
+  if(state.saveTimer)await saveCurrentRows(state.revision);
+  else await state.savePending;
 }
 function updateRecords(){
   updateSummary();
@@ -190,8 +204,14 @@ async function checkConnection(){
         const btn=document.createElement('button');btn.className='button button-outline';btn.type='button';
         btn.textContent='Выбрать доступную: '+suggestion.name;
         btn.onclick=()=>{
+          if(![...$('model').options].some(o=>o.value===suggestion.id)){
+            const option=document.createElement('option');
+            option.value=suggestion.id;option.textContent=suggestion.name||suggestion.id;
+            $('model').append(option);
+          }
           $('model').value=suggestion.id;
-          diagnostic('Модель выбрана. Нажмите «Сохранить», чтобы применить её.');
+          diagnostic('Выбрана модель '+suggestion.id+'. Сохраняю и проверяю доступ…');
+          $('settingsForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
         };
         panel.append(btn);
       }else{
