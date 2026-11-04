@@ -16,6 +16,7 @@ import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
+import {startFolderWatcher} from './lib/folder-watch.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -26,6 +27,7 @@ const templatesPath=path.join(dataDir,'templates.json');
 const sourceDir=path.join(dataDir,'sources');
 const photoReportsDir=path.join(dataDir,'photo-reports');
 const memoryPath=path.join(dataDir,'approved-memory.json');
+const watchedStatePath=path.join(dataDir,'watched-files.json');
 const photoQueue=new SerialQueue();
 async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.readFile(memoryPath,'utf8')))}catch(e){if(e.code==='ENOENT')return {vehicles:[],drivers:[]};throw e}}
 
@@ -303,6 +305,29 @@ const server=http.createServer(async(req,res)=>{
     return send(res,404,{error:'Раздел не найден'});
   }catch(e){return send(res,400,{error:String(e.message||e).slice(0,260)})}
 });
+const watchDir=process.env.TENSEI_WATCH_DIR||'';
+async function enableWatcher(){
+  if(!watchDir)return;
+  const cfg=await settings();
+  if(!cfg.key){console.warn('TENSEI_WATCH_DIR: save Cloud.ru key and restart TENSEI');return}
+  let saved={attempted:[],events:[]};
+  try{saved=JSON.parse(await fs.readFile(watchedStatePath,'utf8'))}catch(e){if(e.code!=='ENOENT')throw e}
+  const seen=new Set(Array.isArray(saved.attempted)?saved.attempted:[]);
+  const events=Array.isArray(saved.events)?saved.events:[];
+  const watcher=startFolderWatcher({directory:watchDir,seen,
+    onEvent:async event=>{
+      events.unshift({...event,at:new Date().toISOString()});
+      await writeJson(watchedStatePath,{attempted:[...seen].slice(-1500),events:events.slice(0,100)});
+    },
+    onFile:async ({name,path:file})=>{
+      const ext=path.extname(name).toLowerCase();
+      const types={'.jpg':'image/jpeg','.jpeg':'image/jpeg','.png':'image/png','.webp':'image/webp','.bmp':'image/bmp','.tif':'image/tiff','.tiff':'image/tiff'};
+      const bytes=await fs.readFile(file);
+      await photoQueue.enqueue(()=>recognize({name,image:'data:'+types[ext]+';base64,'+bytes.toString('base64')}));
+    }});
+  console.log('TENSEI_WATCH_READY '+watchDir);
+  await watcher.scan();
+}
 const requestedPort=process.env.PORT?Number(process.env.PORT):0;
 server.on('error',e=>{console.error('Не удалось открыть локальный порт:',e.message);process.exitCode=1});
 server.listen(requestedPort,'127.0.0.1',()=>{
