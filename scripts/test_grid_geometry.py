@@ -3,7 +3,7 @@ import unittest
 try:
     import numpy as np
     import cv2
-    from grid_geometry import detect_grid, detect_text_bands
+    from grid_geometry import detect_grid, detect_text_bands, detect_crossout_candidates
     AVAILABLE = True
 except ImportError:
     AVAILABLE = False
@@ -31,6 +31,15 @@ class GridGeometryTest(unittest.TestCase):
         self.assertEqual(out['cells'],[])
         self.assertTrue(out['unverified'])
         self.assertGreaterEqual(len(out['row_boxes']),2)
+
+    def test_crossout_candidates_are_never_verified(self):
+        page = np.full((900, 700, 3), 255, dtype=np.uint8)
+        cv2.putText(page, '12345', (40, 220), cv2.FONT_HERSHEY_SIMPLEX,
+                    2.4, (0, 0, 0), 5)
+        cv2.line(page, (50, 175), (230, 225), (0, 0, 0), 4)
+        result = detect_crossout_candidates(page)
+        self.assertFalse(result['verified'])
+        self.assertTrue(all(not item['verified'] for item in result['candidates']))
 
     def test_plain_page_is_not_mistaken_for_table(self):
         photo = np.full((1200, 900, 3), 255, dtype=np.uint8)
