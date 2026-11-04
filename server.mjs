@@ -9,7 +9,7 @@ import {prepareImage,FORMATS} from './lib/images.mjs';
 import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
-const dataDir=path.join(root,'data');
+const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
 const settingsPath=path.join(dataDir,'settings.json');
 const draftPath=path.join(dataDir,'draft.json');
 const prompt='Прочитай фото рукописного журнала отгрузок/взвешиваний. Верни ТОЛЬКО валидный JSON объект с массивом rows. Формат строки: {"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}. Каждое физическое событие/рейс — отдельная строка; не удаляй повторы ТС. Вес в килограммах, не тоннах. Извлекай значения строго из соответствующих колонок; не выдумывай сведения. Если символы неразборчивы, оставляй поле пустым/null и uncertain=true, объясни в note. Не вычисляй неизвестные значения в уме. Сохраняй порядок строк. Никакого markdown.';
@@ -62,19 +62,19 @@ async function excel(raw){
   sheet.columns=[
     ['№',7],['Время',11],['ТС',18],['Водитель',24],['Тара, кг',15],
     ['Брутто, кг',16],['Нетто, кг',15],['Нетто, т',14],
-    ['Источник',23],['Примечание',35],['Проверить',16],['Аномалии',55]
+    ['Источник',23],['Примечание',35],['Сверено с фото',17],['Проверить',16],['Аномалии',55]
   ].map(([header,width])=>({header,width}));
   sheet.getRow(1).height=28;
   sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
   records.forEach((r,i)=>{
     const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
-      r.net===null?null:r.net/1000,r.source,r.note,r.issues.length?'ПРОВЕРИТЬ':'OK',r.issues.join('; ')]);
+      r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',r.issues.length?'ПРОВЕРИТЬ':'OK',r.issues.join('; ')]);
     for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
     row.getCell(8).numFmt='0.000';
     if(r.issues.length)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
     else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
   });
-  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:12}};
+  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:13}};
   sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
   sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
   const summary=book.addWorksheet('Контроль');

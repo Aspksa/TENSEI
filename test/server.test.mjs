@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 async function start(){
-  const child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:'0',TENSEI_NO_BROWSER:'1'},stdio:['ignore','pipe','pipe']});
+  const dataDir=await mkdtemp(path.join(tmpdir(),'tensei-test-'));
+  const child=spawn(process.execPath,['server.mjs'],{cwd:root,env:{...process.env,PORT:'0',TENSEI_NO_BROWSER:'1',TENSEI_DATA_DIR:dataDir},stdio:['ignore','pipe','pipe']});
   let output='',err='';
   child.stderr.on('data',chunk=>{err+=chunk});
   return await new Promise((resolve,reject)=>{
@@ -15,12 +18,12 @@ async function start(){
     child.stdout.on('data',chunk=>{
       output+=chunk.toString();
       const match=/TENSEI_READY (http:\/\/127\.0\.0\.1:\d+)/.exec(output);
-      if(match&&!ready){ready=true;clearTimeout(timer);resolve({child,url:match[1]})}
+      if(match&&!ready){ready=true;clearTimeout(timer);resolve({child,url:match[1],dataDir})}
     });
   });
 }
 test('локальный HTTP сервер, черновик и Excel',async()=>{
-  const {child,url}=await start();
+  const {child,url,dataDir}=await start();
   try{
     let r=await fetch(url+'/');
     assert.equal(r.status,200);
@@ -31,6 +34,15 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     const settings=await r.json();
     assert.equal(settings.model,'qwen/qwen3-vl-235b-a22b-instruct');
     assert.equal(settings.models.length,5);
+    r=await fetch(url+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:'test-api-key-not-real',model:'Qwen/Qwen3.5-397B-A17B',fallback:true})});
+    assert.equal(r.status,200);
+    r=await fetch(url+'/api/settings');
+    const updatedSettings=await r.json();
+    assert.equal(updatedSettings.hasKey,true);
+    assert.equal(updatedSettings.model,'Qwen/Qwen3.5-397B-A17B');
+    assert.ok(!JSON.stringify(updatedSettings).includes('test-api-key-not-real'));
+
     r=await fetch(url+'/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({rows:[{vehicle:'A123BC',time:'08:20',tare:12000,gross:40000,net:28000}]})});
     assert.equal(r.status,200);
@@ -43,7 +55,7 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.equal(bytes.subarray(0,2).toString(),'PK');
     r=await fetch(url+'/api/draft',{method:'DELETE'});
     assert.equal(r.status,200);
-  }finally{child.kill()}
+  }finally{child.kill();await rm(dataDir,{recursive:true,force:true})}
 });
 test('запрос со стороннего Origin отклоняется',async()=>{
   const {child,url}=await start();
