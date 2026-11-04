@@ -70,3 +70,7 @@ tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 .batch-status-item.active{border-color:#71abe1;background:#edf6ff}
 .batch-status-item.done{border-color:#8bd1a1;background:#f0faf3}
 .batch-status-item.error{border-color:#f0a2a2;background:#fff1f1}
+
+.local-read-results{margin:7px 0 10px;padding:8px 10px;border:1px solid #b5ccdf;border-radius:9px;background:#f5fafe;max-height:210px;overflow:auto;font-size:12px}
+.local-read-results>div{padding:4px 0;border-top:1px solid #e3edf5}
+#localRead{margin-bottom:8px;align-self:flex-start;font-size:12px}
