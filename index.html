@@ -71,6 +71,11 @@
               <input id="photoFiles" type="file" accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg" hidden multiple>
               <div class="queue" id="fileQueue" aria-live="polite"></div>
               <div id="uploadFeedback" class="upload-feedback" role="status" aria-live="polite">Добавьте фото — здесь появятся имя файла, следующий шаг и результат проверки.</div>
+              <details class="system-diagnostics"><summary>Не запускается? Проверить состояние TENSEI</summary>
+                <p class="help">Локальная проверка конфигурации. API-ключ и фотографии не отправляются.</p>
+                <button type="button" class="button button-outline" id="runDiagnostics">Проверить систему</button>
+                <div id="diagnosticsResults" role="status" aria-live="polite"></div>
+              </details>
               <div class="actions upload-actions">
                 <button id="recognize" class="button button-primary" type="button"><span id="recognizeLabel">Обработать фото через Cloud.ru</span> <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
