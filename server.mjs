@@ -191,7 +191,7 @@ const server=http.createServer(async(req,res)=>{
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     const url=new URL(req.url,'http://127.0.0.1');
-    const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],
+    const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/humor-messages.js':['humor-messages.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],
       '/legion.js':['legion.js','text/javascript; charset=utf-8'],
       '/legion.css':['legion.css','text/css; charset=utf-8'],
       '/analytics':['analytics.html','text/html; charset=utf-8'],
