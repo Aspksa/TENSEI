@@ -49,7 +49,7 @@ function updateStats(){
   const mass=records.reduce((acc,x)=>{const v=n(x.net);return acc+(Number.isFinite(v)?v:0)},0)/1000;
   el('statRows').textContent=records.length;
   el('statIssues').textContent=issueCount;
-  el('statTons').innerHTML=mass.toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3})+' <i>т</i>';
+  el('statTons').textContent=mass.toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3})+' т';
   el('sideCount').textContent=records.length;
   el('sideIssues').textContent=issueCount;
   el('auditBadge').textContent=issueCount+' строк';
@@ -139,25 +139,58 @@ el('dropzone').addEventListener('drop',e=>addFiles([...e.dataTransfer.files]));
 function fileData(f){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Не удалось прочитать '+f.name));reader.readAsDataURL(f)})}
 el('run').onclick=async()=>{
   if(busy)return;if(!files.length)return setNotice('Сначала загрузите фотографии.');
-  busy=true;el('run').disabled=true;const count=files.length,errors=[];
+  busy=true;el('run').disabled=true;const count=files.length,errors=[];let usedModel='';
   try{
     const pending=files.slice();files=[];drawFiles();
     for(let i=0;i<pending.length;i++){
       const f=pending[i];el('progressText').textContent='Обработка '+(i+1)+'/'+count+': '+f.name;
       el('progressBar').style.width=Math.round(100*i/count)+'%';showPreview(f);
-      try{const image=await fileData(f);const result=await request('recognize',{image,name:f.name});records.push(...result.rows);changed()}
+      try{const image=await fileData(f);const result=await request('recognize',{image,name:f.name});records.push(...result.rows);usedModel=result.model||usedModel;changed()}
       catch(e){errors.push(f.name+': '+e.message);files.push(f)}
     }
     drawFiles();el('progressBar').style.width='100%';
-    el('progressText').textContent='Обработано '+(count-errors.length)+'/'+count+' изображений. Строк в реестре: '+records.length;
-    if(errors.length)setNotice('Некоторые фотографии не обработаны (остались в очереди):\n'+errors.join('\n'));
+    el('progressText').textContent='Готово: '+(count-errors.length)+' из '+count+'. Строк: '+records.length+(usedModel?' · Модель: '+usedModel:'');
+    if(errors.length){const unique=[...new Set(errors.map(x=>x.slice(x.indexOf(': ')+2)))];setNotice('Не обработано фотографий: '+errors.length+'. '+unique.join(' | ')+' Откройте «Настройки» и нажмите «Проверить доступ».');}
     else setNotice('Распознавание завершено. Проверьте замечания и экспортируйте Excel.');
   }finally{busy=false;el('run').disabled=false;if(records.length)scheduleSave()}
 };
 el('save').onclick=async()=>{
-  try{const r=await request('settings',{key:el('key').value,model:el('model').value});el('key').value='';el('saved').textContent=r.hasKey?'Ключ сохранён на диске':'Ключ не задан';el('connection').textContent=r.hasKey?'● Модель настроена':'○ Нужен API-ключ';el('connection').className='state '+(r.hasKey?'ok':'off');setNotice('Настройки сохранены')}
+  try{const r=await request('settings',{key:el('key').value,model:el('model').value,fallback:el('fallback').checked});el('key').value='';el('saved').textContent=r.hasKey?'Ключ сохранён на диске':'Ключ не задан';el('connection').textContent=r.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ';el('connection').className='connection '+(r.hasKey?'':'off');el('connectionDetails').hidden=true;setNotice('Настройки сохранены. Нажмите «Проверить доступ» для диагностики.')}
   catch(e){setNotice(e.message)}
 };
+async function testConnection(){
+  const btn=el('checkConnection'),detail=el('connectionDetails');
+  btn.disabled=true;detail.hidden=false;detail.textContent='Проверка списка моделей Cloud.ru…';
+  try{
+    const res=await fetch('/api/connection');
+    const result=await res.json();
+    if(!res.ok)throw Error(result.error||'Ошибка сервиса');
+    if(!result.ok)throw Error(result.reason||'Нет ключа');
+    if(result.selectedAvailable){
+      el('connection').textContent='Ключ и модель найдены';
+      el('connection').className='connection ok';
+      detail.textContent='Cloud.ru ответил. Выбранная модель есть в доступном каталоге. Проверьте её на фотографии для окончательного подтверждения.';
+    }else{
+      el('connection').textContent='Модель недоступна';
+      el('connection').className='connection off';
+      detail.replaceChildren();
+      const p=document.createElement('p');p.textContent=result.reason||'Выбранная модель недоступна';detail.append(p);
+      if(result.available?.length){
+        const suggested=result.available[0],button=document.createElement('button');
+        button.className='secondary';button.textContent='Выбрать '+suggested.name;
+        button.onclick=()=>{el('model').value=suggested.id;detail.textContent='Нажмите «Сохранить», чтобы применить выбранную модель.'};
+        detail.append(button);
+      }else{
+        const hint=document.createElement('p');hint.textContent='Для этого ключа модели Qwen VL не обнаружены. Проверьте разрешения на сервис Foundation Models.';detail.append(hint);
+      }
+    }
+  }catch(e){
+    el('connection').textContent='Ошибка подключения';el('connection').className='connection off';
+    detail.textContent=e.message;
+  }finally{btn.disabled=false}
+}
+el('checkConnection').onclick=testConnection;
+
 async function init(){
   try{
     const [cfg,draft]=await Promise.all([fetch('/api/settings').then(r=>r.json()),fetch('/api/draft').then(r=>r.json())]);
@@ -166,11 +199,13 @@ async function init(){
     if(cfg.model&&!Array.from(selector.options).some(x=>x.value===cfg.model)){const option=document.createElement('option');option.value=cfg.model;option.textContent=cfg.model;selector.append(option)}
     selector.value=cfg.model;
     el('saved').textContent=cfg.hasKey?'Ключ сохранён в папке data':'Укажите ключ для начала';
-    el('connection').textContent=cfg.hasKey?'● Cloud.ru настроен':'○ Требуется ключ';
-    el('connection').className='state '+(cfg.hasKey?'ok':'off');
+    el('connection').textContent=cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ';
+    el('connection').className='connection '+(cfg.hasKey?'':'off');
+    el('fallback').checked=cfg.fallback!==false;
     records=Array.isArray(draft.rows)?draft.rows:[];
     updateStats();
     if(records.length)setNotice('Черновик восстановлен: '+records.length+' записей.');
+    if(cfg.hasKey)void testConnection();
   }catch(e){setNotice('Ошибка инициализации: '+e.message)}
 }
 init();
