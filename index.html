@@ -129,7 +129,38 @@
                 <button id="recognize" class="button button-primary" type="button">Распознать <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
-              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
+              <div class="scan-console" id="scanConsole" hidden aria-live="polite">
+                <div class="scan-console-head">
+                  <div class="scan-vector" aria-hidden="true">
+                    <svg viewBox="0 0 96 96" width="90" height="90">
+                      <circle class="scan-ring-track" cx="48" cy="48" r="37" fill="none" stroke="#dcecf4" stroke-width="5"/>
+                      <circle class="scan-ring-progress" id="scanRing" cx="48" cy="48" r="37" fill="none"
+                        stroke="#138d95" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)"
+                        stroke-dasharray="232.5" stroke-dashoffset="232.5"/>
+                      <g fill="none" stroke="#37647e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M35 29h20l7 7v31H35V29Z"/>
+                        <path d="M54 29v9h9M41 47h15M41 53h12M41 59h15"/>
+                        <path d="M40 34h5"/>
+                      </g>
+                      <path class="scan-beam" d="M24 18L72 78" stroke="#22b4a0" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+                    </svg>
+                  </div>
+                  <div class="scan-console-info">
+                    <span class="scan-console-eyebrow">СТАТУС РАСПОЗНАВАНИЯ</span>
+                    <strong id="scanStage">Ожидает запуска</strong>
+                    <span id="scanElapsed">00:00 · Скан сохранён локально</span>
+                    <p id="scanStateHint">TENSEI сообщает, на каком этапе находится обработка. Ожидание Cloud.ru не означает зависание.</p>
+                  </div>
+                </div>
+                <div class="scan-stages" id="scanStages">
+                  <span data-phase="queued">01 · Сохранение</span>
+                  <span data-phase="prepare">02 · Подготовка</span>
+                  <span data-phase="cloud">03 · Cloud.ru</span>
+                  <span data-phase="crop">04 · Фрагменты</span>
+                  <span data-phase="complete">05 · Таблица</span>
+                </div>
+              </div><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
@@ -141,10 +172,23 @@
           </div>
         </section>
       </div>
+      <section class="scan-library card" id="scanLibrary">
+        <div class="scan-library-heading">
+          <div class="scan-library-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="5" y="7" width="20" height="19" rx="4"/><path d="M10 7V4h18v19h-3M11 20l4-5 4 3 4-6M11 23h9"/>
+            </svg>
+          </div>
+          <div><h2>Библиотека сканов <span class="scan-count" id="scanArchiveCount">0</span></h2>
+            <p>Каждое фото сохраняется отдельно на компьютере, даже если распознавание закончилось ошибкой.</p></div>
+          <button type="button" id="refreshScans" class="button button-outline">Обновить</button>
+        </div>
+        <div id="scanGallery" class="scan-gallery" aria-live="polite"><p class="help">Загружаю локальную библиотеку…</p></div>
+      </section>
       <section class="card card-result" id="results">
         <div class="card-heading result-heading static-heading">
           <span class="step">3</span>
-          <span class="card-heading-text"><strong>Результат распознавания</strong><small>Исправляйте данные перед выгрузкой</small></span>
+          <span class="card-heading-text"><strong>Результат распознавания</strong><small id="activeScanLabel">Ручная таблица. Сохранённые фотографии — в библиотеке выше.</small></span>
           <div class="actions result-actions">
             <button id="addRow" type="button" class="button button-outline">+ Строка</button>
             <button id="download" type="button" class="button button-primary">Скачать Excel</button>
@@ -171,7 +215,7 @@
         </div>
         <div class="result-footer">
           <span id="tableCount">0 записей</span>
-          <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
+          <button id="clearData" class="button button-danger" type="button" title="Очищает текущую рабочую таблицу, но не удаляет фото и сохранённые распознанные записи из библиотеки">Очистить текущий вид</button>
         </div>
       </section>
       <details id="comparisonDetails" class="audit card" hidden><summary>Дополнительное чтение Chandra OCR 2</summary><p class="help">Результат Chandra нужно сопоставлять с фотографией вручную.</p><pre id="comparisonText" class="comparison-raw"></pre></details><details id="auditDetails" class="audit card">
