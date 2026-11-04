@@ -245,6 +245,77 @@ def recognize_lines(photo: Photo):
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
 
+
+# A bounded in-memory cache for exact cropped image pixels, not guessed values.
+_digit_cell_cache = {}
+_digit_cell_cache_lock = threading.RLock()
+
+
+@app.post("/digit-cells")
+def recognize_digit_cells(photo: Photo):
+    """Read individual numeric cells locally, preserving uncertainty and geometry.
+
+    This is advisory handwriting OCR; a regex match is NOT verification.
+    No cloud calls, maximum 36 cells and bounded cache lifetime.
+    """
+    try:
+        import hashlib
+        import cv2
+        image = decode_photo(photo)
+        geometry = detect_grid(image)
+        height, width = image.shape[:2]
+        cells = geometry["cells"][:36]
+        output = []
+        for box in cells:
+            x1 = max(0, int(box[0] * width) + 2)
+            y1 = max(0, int(box[1] * height) + 2)
+            x2 = min(width, int(box[2] * width) - 2)
+            y2 = min(height, int(box[3] * height) - 2)
+            if x2-x1 < 12 or y2-y1 < 10:
+                continue
+            crop = image[y1:y2, x1:x2]
+            # High resolution and equalization help thin handwritten strokes.
+            if crop.shape[0] < 80:
+                ratio = min(4, 80 / max(1, crop.shape[0]))
+                crop = cv2.resize(crop, None, fx=ratio, fy=ratio,
+                                  interpolation=cv2.INTER_CUBIC)
+            key = hashlib.sha256(crop.tobytes()).hexdigest()
+            with _digit_cell_cache_lock:
+                saved = _digit_cell_cache.get(key)
+            if saved is not None:
+                record = dict(saved)
+                record["cached"] = True
+            else:
+                with _lock:
+                    prediction = next(iter(model_ocr().predict(crop)))
+                result = prediction.json if hasattr(prediction, "json") else prediction
+                if callable(result):
+                    result = result()
+                result = result.get("res", result)
+                texts = [str(t) for t in (result.get("rec_texts") or [])[:8]]
+                scores = result.get("rec_scores") or []
+                text = " ".join(texts)[:80]
+                score = float(min(scores)) if len(scores) else None
+                # Numbers are suggestions; mixed symbols are not coerced into digits.
+                numeric = bool(re.fullmatch(r"[0-9\s.,-]{1,24}", text))
+                record = {"text": text, "score": round(score, 4) if score is not None else None,
+                          "numericCandidate": numeric, "verified": False, "cached": False}
+                with _digit_cell_cache_lock:
+                    if len(_digit_cell_cache) >= 1500:
+                        _digit_cell_cache.pop(next(iter(_digit_cell_cache)))
+                    _digit_cell_cache[key] = record
+            output.append({"bbox": box, **record})
+        return {"engine": "PP-OCRv6 cell crops", "cells": output,
+                "gridDetected": bool(cells), "verified": False,
+                "localOnly": True}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless and PaddleOCR")
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
+
+
 @app.post("/vl")
 def understand_page(photo: Photo):
     """Experimental PaddleOCR-VL; result is diagnostic only, never auto-applied."""
