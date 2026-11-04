@@ -65,7 +65,14 @@
                     <button class="button button-outline" id="checkConnection" type="button">Проверить подключение</button>
                   </div>
                 </div>
-                <p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
+                <details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
+<div class="advanced-options">
+<label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
+<label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
+<label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
+<label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
+</div></details>
+<p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
                 <div id="connectionDetails" class="diagnostic" role="status" aria-live="polite" hidden></div>
               </form>
             </div>
@@ -77,7 +84,11 @@
             <span class="card-heading-text"><strong>Фотографии</strong><small>Выберите одну или несколько страниц</small></span>
             <span class="subtle">до 20 МБ / файл</span>
           </div>
-          <div class="upload-grid">
+          <div class="template-bar"><label class="field"><span>Шаблон журнала</span><select id="templateSelect"><option value="weights">Журнал весовой</option></select></label>
+<details class="template-editor"><summary>Новый шаблон колонок</summary>
+<div class="template-form"><input id="templateName" placeholder="Название шаблона"><input id="templateColumns" placeholder="Время, Тара, Брутто, Нетто, Автомобиль">
+<button type="button" class="button button-outline" id="saveTemplate">Сохранить шаблон</button></div></details></div>
+<div class="upload-grid">
             <div class="upload-left">
               <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Выбрать фотографии">
                 <span class="upload-icon" aria-hidden="true">↑</span>
