@@ -263,6 +263,16 @@ function showPreview(file){
   if(!file)return;
   state.previewUrl=URL.createObjectURL(file);
   $('previewFilename').textContent=file.name;
+  const ticket=state.previewUrl;
+  $('qualityStatus').textContent='Проверяю разрешение и качество фотографии локально…';
+  fileData(file).then(image=>api('quality',{image}))
+    .then(result=>{
+      if(state.previewUrl!==ticket)return;
+      $('qualityStatus').textContent=result.quality.warnings?.length?
+        'Качество: '+result.quality.warnings.join(' · '):
+        'Качество: '+result.quality.width+' × '+result.quality.height+
+        ' пикселей; явных проблем не обнаружено.';
+    }).catch(e=>{if(state.previewUrl===ticket)$('qualityStatus').textContent='Проверка качества не удалась: '+e.message});
   img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true};
   img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;$('previewEmpty').textContent='Предпросмотр этого формата недоступен'};
   img.src=state.previewUrl;
