@@ -32,9 +32,17 @@ jobs:
           node --check lib/cloud.mjs
           node --check lib/workflow.mjs
           node --check lib/processing-queue.mjs
+          node --check lib/table-layout.mjs
+          node --check lib/optional-ocr.mjs
           node --check lib/records.mjs
           node --check lib/images.mjs
       - name: Compile optional Python OCR service
-        run: python -m py_compile scripts/paddle_service.py
+        run: python -m py_compile scripts/paddle_service.py scripts/grid_geometry.py scripts/test_grid_geometry.py
+      - name: Install OpenCV test dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: python -m pip install --quiet 'numpy>=1.24,<3' 'opencv-python-headless>=4.9,<5'
+      - name: Test OpenCV table geometry (Linux)
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s scripts -p test_grid_geometry.py
       - name: Test image conversion, anomalies and HTTP API
         run: npm test
