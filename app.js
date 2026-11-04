@@ -463,6 +463,25 @@ $('photoFiles').onchange=e=>{queueFiles([...e.target.files]);e.target.value=''};
 for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragging')});
 for(const ev of ['drop','dragleave'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragging')});
 drop.addEventListener('drop',e=>queueFiles([...e.dataTransfer.files]));
+$('runDiagnostics').onclick=async()=>{
+  const button=$('runDiagnostics'),target=$('diagnosticsResults');
+  button.disabled=true;target.textContent='Проверка локального сервера и сохранённых данных…';
+  try{
+    const report=await api('diagnostics',undefined,'GET');
+    const lines=[
+      report.checks.cloudKeyConfigured?'Cloud.ru: ключ сохранён':'Cloud.ru: ключ не настроен',
+      'Сохранённых строк фото: '+(report.checks.savedPhotoRows??'ошибка'),
+      'История заданий: '+(report.checks.photoTasks??'ошибка'),
+      'Импортов «Легиона»: '+(report.checks.legionImports??'ошибка'),
+      'RapidOCR: '+(report.checks.rapidOCR==='ready'?'работает':'необязательный модуль не запущен')
+    ];
+    if(report.checks.lastTask?.error)lines.push('Последняя ошибка фото: '+report.checks.lastTask.error);
+    lines.push(...(report.warnings||[]).slice(0,8));
+    target.replaceChildren();
+    for(const line of lines){const p=document.createElement('p');p.textContent=line;target.append(p)}
+  }catch(e){target.textContent='Диагностика недоступна: '+e.message}
+  finally{button.disabled=false}
+};
 $('clearQueue').onclick=()=>{if(state.busy)return;state.queue=[];drawQueue();showPreview(null)};
 $('recognize').onclick=async()=>{
   if(state.busy||!state.queue.length)return;
