@@ -42,6 +42,15 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.match(home,/autoPipeline/);
     assert.match(home,/Авто — локально/);
     for(const file of ['app.js','styles.css','humor-messages.js']){r=await fetch(url+'/'+file);assert.equal(r.status,200);assert.ok((await r.text()).length>100)}
+    r=await fetch(url+'/design-system.css');
+    assert.equal(r.status,200,'shared design stylesheet must load on local server');
+    assert.match(await r.text(),/unified visual language/);
+    r=await fetch(url+'/api/diagnostics');
+    assert.equal(r.status,200,'diagnostics must work without Cloud.ru key');
+    const diagnostics=await r.json();
+    assert.equal(diagnostics.checks.cloudKeyConfigured,false);
+    assert.equal(diagnostics.checks.statisticsRequiresCloud,false);
+    assert.ok(diagnostics.warnings.some(x=>x.includes('API-ключ')));
     r=await fetch(url+'/api/settings');
     assert.equal(r.status,200);
     const settings=await r.json();
