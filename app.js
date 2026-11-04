@@ -362,6 +362,7 @@ $('localRead').onclick=async()=>{
   finally{button.disabled=false}
 };
 function showPreview(file){
+  ++cropRequest;$('cropReview').hidden=true;$('cellReviewToolbar').hidden=true;
   gridBoxes=[];$('gridOverlay').replaceChildren();$('localReadResults').hidden=true;
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
@@ -542,6 +543,13 @@ async function refreshTasks(){
     meta.textContent=statusLabel(task);
     item.append(name,meta);
     if(task.status==='done'&&task.reportId){
+      const view=document.createElement('button');view.type='button';view.className='button button-outline';
+      view.textContent='Посмотреть ячейки';
+      view.onclick=async()=>{try{await showReportCells(task)}
+        catch(e){status('Не удалось показать ячейки: '+e.message,'error')}};
+      item.append(view);
+    }
+    if(task.status==='done'&&task.reportId){
       const importBtn=document.createElement('button');importBtn.type='button';
       importBtn.className='button button-outline';importBtn.textContent='Добавить строки';
       importBtn.onclick=async()=>{
@@ -605,8 +613,48 @@ $('saveTemplate').onclick=async()=>{
   }catch(e){status('Шаблон не сохранился: '+e.message,'error')}
   finally{button.disabled=false}
 };
+let reviewCells=[],reviewSourceId='',cropRequest=0;
+async function showRowCrop(sourceId,bbox,label='Строка'){
+  const crop=$('cropReview'),note=$('cropStatus'),img=$('cropPreview');
+  const request=++cropRequest;
+  if(!sourceId||!Array.isArray(bbox)||bbox.length!==4){
+    crop.hidden=true;return;
+  }
+  crop.hidden=false;img.hidden=true;note.textContent='Увеличиваю фрагмент: '+label+'…';
+  try{
+    const result=await api('row-crop',{sourceId,bbox});
+    if(request!==cropRequest)return;
+    img.src=result.image;img.hidden=false;
+    note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
+  }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
+}
+$('cellPicker').onchange=()=>{
+  const i=Number($('cellPicker').value),box=reviewCells[i];
+  if(box)void showRowCrop(reviewSourceId,box,'Ячейка '+(i+1));
+};
+async function showReportCells(task){
+  const report=await api('photo-report/'+task.reportId,undefined,'GET');
+  if(!report.sourceId)throw Error('У отчёта нет исходной фотографии');
+  showSource({sourceId:report.sourceId,source:task.name,bbox:null});
+  reviewCells=(report.layout?.cellBoxes||[]).filter(b=>
+    Array.isArray(b)&&b.length===4&&b.every(v=>typeof v==='number'&&v>=0&&v<=1)&&b[2]>b[0]&&b[3]>b[1]).slice(0,700);
+  reviewSourceId=report.sourceId;
+  $('cellReviewToolbar').hidden=reviewCells.length===0;
+  const picker=$('cellPicker');picker.replaceChildren();
+  for(let i=0;i<reviewCells.length;i++){
+    const option=document.createElement('option');option.value=String(i);
+    option.textContent='Ячейка '+(i+1);picker.append(option);
+  }
+  gridBoxes=reviewCells;
+  drawPreviewGrid();
+  if(reviewCells.length)void showRowCrop(reviewSourceId,reviewCells[0],'Ячейка 1');
+  else $('cropStatus').textContent='У этого фото нет надёжно обнаруженных ячеек.';
+  $('upload').scrollIntoView({behavior:'smooth',block:'start'});
+}
 function showSource(row){
   gridBoxes=[];$('gridOverlay').replaceChildren();
+  reviewCells=[];reviewSourceId='';$('cellReviewToolbar').hidden=true;
+  $('cropReview').hidden=true;++cropRequest;
   if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';return}
   const src='/api/source/'+row.sourceId;
   const img=$('previewImage'),overlay=$('highlightBox');
@@ -615,6 +663,7 @@ function showSource(row){
   img.hidden=false;overlay.hidden=true;
   const update=()=>{
     overlay.hidden=true;
+    drawPreviewGrid();
     if(!Array.isArray(row.bbox)||row.bbox.length!==4||!img.naturalWidth||!img.naturalHeight)return;
     const area=$('previewSurface');
     const displayWidth=area.clientWidth,displayHeight=area.clientHeight;
@@ -636,6 +685,7 @@ function showSource(row){
   if(img.getAttribute('src')!==src)img.src=src;
   else if(img.complete)update();
   $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
+  if(row.bbox)void showRowCrop(row.sourceId,row.bbox,'Строка');
 }
 
 $('approveMemory').onclick=async()=>{
