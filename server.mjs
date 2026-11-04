@@ -14,6 +14,7 @@ import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
 import {exportReadiness} from './lib/review-policy.mjs';
 import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText} from './lib/optional-ocr.mjs';
 import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/local-intelligence.mjs';
+import {plateCandidates,findCrossSourceDuplicates,reviewPriority} from './lib/photo-review-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
@@ -131,8 +132,24 @@ async function recognize(input){
     const confidence=confidenceReport(verifiedRows);
     const documentType=classifyDocument(verifiedRows,template);
     const photoGroup=photoBatchMetadata(task.name,verifiedRows,task.startedAt);
+    // Diagnostic only. Never auto-accept an OCR reading based on registry or other photos.
+    const ledger=await tasks();
+    const prior=ledger.filter(t=>t.id!==id&&t.status==='done')
+      .flatMap(t=>(t.rows||[]).filter(r=>r.reviewed===true)).slice(0,2000);
+    const duplicateCandidates=findCrossSourceDuplicates(verifiedRows,prior);
+    const recognizedPlates=verifiedRows.map(r=>plateCandidates(r.vehicle,dictionary.vehicles));
+    const reviewDiagnostics=verifiedRows.map((r,i)=>reviewPriority(r,{
+      vehicleKnown:!dictionary.vehicles?.length||recognizedPlates[i].known,
+      duplicate:duplicateCandidates.some(x=>x.index===i)
+    }));
+    if(duplicateCandidates.length)result.warnings.push('Возможные повторные рейсы с ранее подтверждёнными фотографиями: '+
+      duplicateCandidates.length+'. Записи не объединялись.');
+
     const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,photoGroup,
+      duplicateCandidates,recognizedPlates,reviewDiagnostics,
+      unruledColumns:result.unruledColumns,suspectedCorrections:result.suspectedCorrections,
+      rowCoverage:result.rowCoverage,localDigitCandidates:result.localDigitCandidates,
       missingRows:result.missingRows,documentHint:result.documentHint,cellConsensus:result.cellConsensus,
       digitCells:result.digitCells,ocrComparison:result.ocrComparison,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
@@ -148,6 +165,9 @@ async function recognize(input){
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,photoGroup,
+      duplicateCandidates,recognizedPlates,reviewDiagnostics,
+      unruledColumns:result.unruledColumns,suspectedCorrections:result.suspectedCorrections,
+      rowCoverage:result.rowCoverage,localDigitCandidates:result.localDigitCandidates,
       missingRows:result.missingRows,documentHint:result.documentHint,
       cellConsensus:result.cellConsensus,digitCells:result.digitCells,ocrComparison:result.ocrComparison,
       localOcr:result.localOcr,localVl:result.localVl,
