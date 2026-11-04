@@ -81,7 +81,7 @@ function draw(){
     const day=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
       String(date.getDate()).padStart(2,'0')].join('-');
     const value=perDay.get(day)||0,alpha=(.12+.78*value/top).toFixed(2);
-    return '<div class="day '+(!kg?'empty':'')+'" title="'+esc(day)+' — '+
+    return '<div class="day '+(!value?'empty':'')+'" title="'+esc(day)+' — '+
       num(value)+(metric==='tons'?' т':' рейсов')+'" style="background:rgba(88,170,250,'+alpha+')">'+date.getDate()+'</div>';
   }).join('');
   const tbody=$('fleetTable');tbody.replaceChildren();
@@ -122,16 +122,19 @@ async function load(resetCatalog=false){
   try{
     const [r,t,m,g]=await Promise.all([
       fetch('/api/fleet/stats?'+query()),
-      fetch('/api/tasks').then(r=>r.json()),
-      fetch('/api/ai-monitor').then(r=>r.json()),
-      fetch('/api/photo-groups').then(r=>r.json())
+      fetch('/api/tasks').then(r=>r.ok?r.json():{tasks:[]}).catch(()=>({tasks:[]})),
+      fetch('/api/ai-monitor').then(r=>r.ok?r.json():{}).catch(()=>({})),
+      fetch('/api/photo-groups').then(r=>r.ok?r.json():{groups:[]}).catch(()=>({groups:[]}))
     ]);
     const data=await r.json();
     if(!r.ok)throw Error(data.error||'HTTP '+r.status);
     if(token!==requestToken)return;
-    snapshot=data;tasks=t.tasks||[];
+    snapshot=data;tasks=Array.isArray(t.tasks)?t.tasks:[];
     if(resetCatalog)populate(data.catalog);
-    draw();drawMonitor(m);drawPhotoGroups(g);drawTasks();
+    draw();
+    try{drawMonitor(m)}catch(e){$('aiMonitor').textContent='Монитор ИИ временно недоступен: '+e.message}
+    try{drawPhotoGroups(g)}catch(e){$('photoGroups').textContent='Архив фото временно недоступен: '+e.message}
+    try{drawTasks()}catch(e){$('tasks').textContent='История обработки временно недоступна: '+e.message}
     $('state').textContent='Учтено '+num(data.totals.trips)+' рейсов · '+num(data.totals.tonnes)+' т';
   }catch(e){if(token===requestToken)$('state').textContent='Ошибка статистики: '+e.message}
 }
