@@ -1,0 +1,4 @@
+# Optional lightweight CPU OCR. NEVER installed by main TENSEI.bat.
+# Use an isolated virtual environment; binary backends are platform-dependent.
+rapidocr>=3.10,<4
+onnxruntime>=1.18,<2
