@@ -1,4 +1,5 @@
 import {humorCategory,createHumorRotator} from './humor-messages.js';
+import {exportReadiness,statusLabel} from './lib/review-policy.mjs';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
 const columns=['time','vehicle','driver','tare','gross','net','note'];
@@ -54,7 +55,7 @@ function inspect(items){
     return {row,index,issues};
   });
 }
-let lastVerifiedExcelSignature='',verifiedExcelTimer=null;
+let lastVerifiedExcelSignature='',verifiedExcelTimer=null,exportInFlight=false;
 function scheduleVerifiedExcel(){
   clearTimeout(verifiedExcelTimer);
   if(state.busy||!$('autoExcel')?.checked||state.rows.length===0)return;
@@ -64,8 +65,7 @@ function scheduleVerifiedExcel(){
   if(signature===lastVerifiedExcelSignature)return;
   verifiedExcelTimer=setTimeout(()=>{
     if(state.busy||!$('autoExcel').checked||state.rows.some(r=>!r.reviewed)||inspect(state.rows).some(x=>x.issues.length))return;
-    lastVerifiedExcelSignature=signature;
-    $('download').click();
+    void downloadExcel({verifiedOnly:true,signature});
   },850);
 }
 function updateSummary(){
@@ -75,7 +75,12 @@ function updateSummary(){
   $('metricIssues').textContent=numIssues;
   $('metricTons').textContent=(kilos/1000).toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3});
   $('auditCount').textContent=numIssues;
-  $('download').disabled=state.rows.length===0||state.busy;
+  $('download').disabled=state.rows.length===0||state.busy||exportInFlight;
+  const pending=examined.filter(x=>!x.row.reviewed).length;
+  const line=$('exportReadiness');
+  if(line)line.textContent=state.rows.length===0?'Добавьте фотографии для формирования Excel.':
+    pending===0&&numIssues===0?'Все строки подтверждены — Excel готов к автоматической выгрузке.':
+    'На проверку: '+pending+' неподтверждённых строк; '+numIssues+' с замечаниями. Ручной Excel сохранит отметки проверки.';
 }
 function queueSave(){
   state.revision++;
@@ -475,18 +480,29 @@ $('addRow').onclick=()=>{
   state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
   updateRecords();$('results').scrollIntoView({behavior:'smooth',block:'start'});
 };
-$('download').onclick=async()=>{
-  if(state.busy||!state.rows.length)return;
-  const btn=$('download');btn.disabled=true;
+async function downloadExcel({verifiedOnly=false,signature=null}={}){
+  if(state.busy||!state.rows.length||exportInFlight)return;
+  const readiness=exportReadiness(state.rows);
+  if(verifiedOnly&&!readiness.ready)return;
+  if(!verifiedOnly&&!readiness.ready){
+    const ok=confirm('В реестре '+readiness.reviewPending.length+' неподтверждённых строк и '+
+      readiness.invalid.length+' строк с замечаниями. Выгрузить Excel с пометками «Проверить»?');
+    if(!ok)return;
+  }
+  exportInFlight=true;updateSummary();
   try{
-    const blob=await api('export',{rows:state.rows});
+    const blob=await api('export',{rows:state.rows.map(r=>({...r})),verifiedOnly});
     const url=URL.createObjectURL(blob);
-    const link=document.createElement('a');link.href=url;link.download='TENSEI.xlsx';link.click();
+    const link=document.createElement('a');link.href=url;
+    link.download=verifiedOnly?'TENSEI-проверено.xlsx':'TENSEI-черновик.xlsx';link.click();
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    status('Excel подготовлен. Проверьте папку загрузок.','success');
+    if(verifiedOnly)lastVerifiedExcelSignature=signature||JSON.stringify(state.rows);
+    status(verifiedOnly?'Проверенный Excel подготовлен.':'Черновой Excel подготовлен с отметками замечаний.','success');
   }catch(e){status('Excel не выгружен: '+e.message,'error')}
-  finally{updateSummary()}
-};
+  finally{exportInFlight=false;updateSummary()}
+}
+$('download').onclick=()=>{void downloadExcel()};
+
 $('clearData').onclick=async()=>{
   if(state.busy)return;
   if(!confirm('Удалить все строки и сохранённый черновик?'))return;
@@ -510,8 +526,7 @@ async function refreshTasks(){
     const item=document.createElement('div');item.className='task-item';
     const name=document.createElement('strong');name.textContent=task.name||'Фото';
     const meta=document.createElement('small');
-    meta.textContent=task.status==='done'?'Готово · '+(task.rowCount||0)+' строк'+(task.model?' · '+task.model:''):
-      task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
+    meta.textContent=statusLabel(task);
     item.append(name,meta);
     if(task.status==='done'&&task.reportId){
       const importBtn=document.createElement('button');importBtn.type='button';
