@@ -9,3 +9,31 @@ a{color:var(--primary)}.app{min-height:100vh}.topbar{background:#fff;border-bott
 .card-result{margin-top:18px;overflow:hidden}.result-heading{border-bottom:1px solid #edf1f5}.result-actions{margin-left:auto}.result-summary{display:flex;gap:23px;align-items:center;flex-wrap:wrap;padding:13px 23px;background:#f8fafc;font-size:13px;color:#54677a}.result-summary strong{font-size:17px;color:#17283a;margin-right:3px}.result-summary .autosave{margin-left:auto;font-size:12px;color:#8794a3}.filters{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:15px 23px}.searchbox input{background:white;border:1px solid #cbd7e2;border-radius:9px;padding:10px 13px;min-width:315px;width:100%;font-size:13px}.table-scroll{margin:0 23px;overflow:auto;border:1px solid #e2e9ef;border-radius:10px;max-height:56vh}table{border-collapse:collapse;width:100%;min-width:1130px}th{text-align:left;position:sticky;top:0;z-index:2;background:#f2f6f9;font-weight:690;font-size:11px;color:#576a7e;padding:12px 9px;white-space:nowrap;border-bottom:1px solid #dbe4ec}td{padding:8px;border-bottom:1px solid #e9eef3;font-size:12px}tr:last-child td{border-bottom:none}tbody tr:hover{background:#f8fafc}tr.issue-row{background:var(--warning)}tr.issue-row:hover{background:#fff0dc}td input[type=text]{background:transparent;border:1px solid transparent;border-radius:6px;padding:7px 6px;min-width:76px;width:100%;font-size:12px;color:#27384b}td input[type=text]:focus{background:white;border-color:#a5bdd1}td input[type=checkbox]{width:16px;height:16px;accent-color:var(--primary)}.flag{font-size:11px;color:var(--success);white-space:nowrap}.flag.issue{color:#9b5b24;font-weight:650}.row-remove{font-size:18px;background:none;border:none;color:#8795a4}.row-remove:hover{color:var(--error)}.empty{padding:55px 20px;text-align:center;color:#8493a3;font-size:13px}.result-footer{display:flex;justify-content:space-between;align-items:center;padding:12px 23px;color:var(--muted);font-size:12px}.audit{margin-top:16px}.audit>summary{cursor:pointer;padding:17px 23px;display:flex;justify-content:space-between;align-items:center;font-weight:670;list-style:none}.audit>summary::-webkit-details-marker{display:none}.count-chip{background:#eef3f7;color:#506a83;padding:2px 9px;border-radius:20px;font-weight:650;font-size:12px}.audit-list{display:grid;gap:8px;padding:0 23px 20px}.audit-item{display:flex;align-items:center;justify-content:space-between;gap:15px;border:1px solid #e8e3dc;background:#fffaf5;border-radius:10px;padding:12px 14px}.audit-item strong{font-size:13px}.audit-item p{font-size:12px;color:#8d6033;margin:3px 0 0}.audit-item button{flex-shrink:0}.audit-empty{font-size:13px;color:var(--muted);padding:13px 0}footer{font-size:12px;color:#8794a4;margin-top:22px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 @media(max-width:900px){.upload-grid{grid-template-columns:1fr}.preview-surface{height:220px}.settings-bottom{align-items:flex-start}.local{display:none}.field-row{grid-template-columns:1fr}}
 @media(max-width:630px){.topbar-inner{padding:12px 14px}.topbar-actions{gap:9px}.connection{display:none}.container{padding:21px 12px 40px}.heading h1{font-size:24px}.card-heading{padding:16px}.card-body{padding:0 16px 16px}.upload-grid{padding:0 16px;gap:16px}.subtle{font-size:11px}.result-heading{flex-wrap:wrap}.result-actions{margin-left:0;width:100%}.result-actions .button{flex:1}.result-summary{padding:12px 16px;gap:9px 17px}.result-summary .autosave{margin-left:0;width:100%}.filters{padding:13px 16px}.searchbox{width:100%}.searchbox input{min-width:0}.table-scroll{margin:0 12px}.result-footer{padding:12px}.audit>summary{padding:15px}.audit-list{padding:0 15px 16px}.audit-item{align-items:flex-start;flex-direction:column}.button{min-height:41px}.settings-bottom .actions{width:100%}.settings-bottom .actions .button{flex:1}}
+
+
+/* Optional OCR tools — collapsed unless the operator asks for advanced settings. */
+.advanced-settings{margin-top:14px;border:1px solid #e1eaf1;border-radius:10px;padding:10px 12px}
+.advanced-settings summary,.template-editor summary,.task-history summary{cursor:pointer;color:var(--primary);font-size:12px;font-weight:650}
+.advanced-options{display:grid;gap:10px;margin-top:14px}
+.advanced-options .inline-check{display:flex;align-items:flex-start}
+.template-bar{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin:0 23px 15px}
+.template-bar>.field{min-width:230px}
+.template-bar select{border:1px solid #bac9d6;border-radius:9px;padding:9px 13px;background:#fff;color:var(--text);font-size:13px}
+.template-editor{flex:1;min-width:min(100%,260px);font-size:12px}
+.template-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:13px 0 0}
+.template-form input{min-width:140px;flex:1;padding:10px;border-radius:8px;border:1px solid #c7d6e1}
+.template-form input:nth-child(2){flex:3;min-width:250px}
+.template-editor button{min-height:40px}
+.task-history{margin-top:12px;border-top:1px solid #e5eaf0;padding-top:10px}
+.task-list{margin-top:8px;max-height:180px;overflow:auto;display:grid;gap:6px}
+.task-item{display:flex;flex-direction:column;gap:2px;border-radius:8px;padding:8px 9px;background:#f5f8fb}
+.task-item strong{font-size:12px;font-weight:650;overflow-wrap:anywhere}
+.task-item small{font-size:11px;color:#6b7f94;overflow-wrap:anywhere}
+.preview-surface{position:relative}
+#highlightBox{position:absolute;pointer-events:none;z-index:2;border:3px solid #e89f2c;background:rgba(251,197,43,.21);border-radius:3px;box-shadow:0 0 0 2px rgba(255,255,255,.75)}
+#previewImage{user-select:none}
+.comparison-raw{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;background:#f6f8fb;border-radius:8px;padding:14px 22px;color:#34495b;font-size:12px;margin:12px 22px}
+#comparisonDetails>.help{padding:0 22px}
+tbody tr[data-row]{cursor:pointer}
+tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
+@media(max-width:630px){.template-bar{margin:0 16px 13px;display:block}.template-bar>.field{margin-bottom:10px}.template-form input:nth-child(2){min-width:100%}}
