@@ -235,7 +235,7 @@ async function readFleetImports(){
     index=[];
   }
   let count=0;
-  if(index.length>2000)warnings.push('История превышает лимит 2000 импортов. Итог НЕ является полным.');
+  if(index.length>=2000)warnings.push('История достигла лимита 2000 импортов; старые CSV могли быть вытеснены. Итог может быть неполным.');
   for(const entry of index.slice(0,2000)){
     if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
     const file=path.join(dataDir,'legion','imports',entry.id+'.json');
