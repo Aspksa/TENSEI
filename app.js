@@ -326,7 +326,7 @@ $('recognize').onclick=async()=>{
         }
         done++;
         updateRecords();
-        await refreshTasks();
+        await refreshTasks().catch(()=>{});
       }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
     }
     state.queue.push(...failed);
