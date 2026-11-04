@@ -28,14 +28,13 @@
     <aside class="side-menu" aria-label="Меню TENSEI">
       <div class="side-title">РАЗДЕЛЫ</div>
       <button id="navPhoto" type="button" class="side-link active" aria-current="page">
-        <span class="side-icon" aria-hidden="true">▧</span>
-        <span><strong>Распознавание фото</strong><small>Журналы → Excel</small></span>
+        <span class="side-icon" aria-hidden="true">⌂</span><span><strong>Главная</strong><small>Загрузка и статусы фото</small></span>
       </button>
-      <button id="navLegion" type="button" class="side-link">
-        <span class="side-icon" aria-hidden="true">▤</span>
-        <span><strong>Легион · отчёты</strong><small>CSV карьера → XLSX</small></span>
-      </button>
-      <a class="side-link" href="/analytics"><span class="side-icon" aria-hidden="true">▥</span><span><strong>Аналитика</strong><small>Графики · автопарк · диагностика ИИ</small></span></a>
+      <a class="side-link" href="#results" id="navReview"><span class="side-icon" aria-hidden="true">✓</span><span><strong>Проверка и реестр</strong><small>Цифры, машины, Excel</small></span></a>
+      <a class="side-link" href="/analytics"><span class="side-icon" aria-hidden="true">▥</span><span><strong>Аналитика</strong><small>Рейсы, тоннаж, расходы ИИ</small></span></a>
+      <a class="side-link" href="#settings" id="navSettings"><span class="side-icon" aria-hidden="true">⚙</span><span><strong>Настройки</strong><small>Режимы и расширенные инструменты</small></span></a>
+      <details class="side-tools"><summary>Дополнительно</summary><button id="navLegion" type="button" class="side-link">
+        <span class="side-icon" aria-hidden="true">▤</span><span><strong>Легион · CSV</strong><small>Специальные отчёты</small></span></button></details>
       <div class="side-bottom"><span>ЛОКАЛЬНО</span><small>Проверка данных · Excel · архив отчётов</small></div>
     </aside>
     <main class="container" id="top">
@@ -50,11 +49,90 @@
       </div>
       <div id="notice" class="notice" role="alert" aria-live="polite" hidden></div>
       <div class="steps-grid">
+        <section class="card card-upload" id="upload">
+          <div class="card-heading static-heading">
+            <span class="step">1</span>
+            <span class="card-heading-text"><strong>Загрузите фотографии</strong><small>Обработка и сохранение запускаются одним действием</small></span>
+            <span class="subtle">до 20 МБ / файл</span>
+          </div>
+          <details class="template-options"><summary>Тип журнала · весовой по умолчанию</summary><div class="template-bar"><label class="field"><span>Шаблон журнала</span><select id="templateSelect"><option value="weights">Журнал весовой</option></select></label>
+<details class="template-editor"><summary>Новый шаблон колонок</summary>
+<div class="template-form"><input id="templateName" placeholder="Название шаблона"><input id="templateColumns" placeholder="Время, Тара, Брутто, Нетто, Автомобиль">
+<button type="button" class="button button-outline" id="saveTemplate">Сохранить шаблон</button></div></details></div></details>
+<div class="upload-grid">
+            <div class="upload-left">
+              <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Выбрать фотографии">
+                <span class="upload-icon" aria-hidden="true">↑</span>
+                <strong>Добавить фотографии</strong>
+                <span>Нажмите или перетащите файлы сюда</span>
+                <small>JPG, PNG, WebP, TIFF, BMP, GIF, AVIF, SVG. HEIC — если доступен кодек.</small>
+              </div>
+              <input id="photoFiles" type="file" accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg" hidden multiple>
+              <div class="queue" id="fileQueue" aria-live="polite"></div>
+              <div class="actions upload-actions">
+                <button id="recognize" class="button button-primary" type="button">Обработать автоматически <span id="queuedCount"></span></button>
+                <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
+              <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
+              <div class="photo-status-steps" id="photoStatusSteps" role="group" aria-label="Этапы обработки"><span>Ожидание</span><span>Подготовка</span><span>Распознавание</span><span>Проверка</span><span>Готово</span></div>
+              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
+              <p id="humorCaption" class="humor-caption" aria-live="off" hidden></p>
+              <label class="inline-check"><input id="humorEnabled" type="checkbox" checked> Шуточные комментарии ИИ (включая чёрный юмор)</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+            </div>
+            <div class="preview">
+              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
+              <div class="preview-surface" id="previewSurface">
+                <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
+                <span id="previewEmpty">Здесь появится фотография</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <section class="card card-result" id="results">
+        <div class="card-heading result-heading static-heading">
+          <span class="step">2</span>
+          <span class="card-heading-text"><strong>Проверка и готовый Excel</strong><small>Подтвердите подозрительные значения, затем выгрузите реестр</small></span>
+          <div class="actions result-actions">
+            <button id="addRow" type="button" class="button button-outline">+ Строка</button>
+            <button id="download" type="button" class="button button-primary">Скачать Excel</button>
+          </div>
+        </div>
+        <label class="inline-check export-auto"><input id="autoExcel" type="checkbox" checked> Автоматически скачать Excel, когда все строки подтверждены и нет замечаний</label>
+        <div class="result-summary">
+          <span><strong id="metricRows">0</strong> строк</span>
+          <span><strong id="metricIssues">0</strong> на проверку</span>
+          <span><strong id="metricTons">0,000</strong> тонн нетто</span>
+          <span class="autosave" id="saveStatus">Черновик сохраняется локально</span>
+        </div>
+        <div class="filters">
+          <button class="button button-outline" type="button" id="reviewIssues">Показать спорные строки</button>
+          <label class="searchbox"><span class="sr-only">Поиск по таблице</span><input id="search" type="search" placeholder="Поиск по номеру, водителю, примечанию…"></label>
+          <label class="inline-check"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label>
+        </div>
+        <div class="table-scroll">
+          <table aria-label="Распознанные записи журнала">
+            <thead><tr>
+              <th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Сверено</th><th>Проверка</th><th></th>
+            </tr></thead>
+            <tbody id="rowsBody"></tbody>
+          </table>
+          <div id="emptyTable" class="empty">Пока нет записей. Загрузите фотографию или добавьте строку вручную.</div>
+        </div>
+        <div class="result-footer">
+          <span id="tableCount">0 записей</span>
+          <button id="approveMemory" class="button button-outline" type="button">Запомнить подтверждённые ТС и водителей</button>
+          <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
+        </div>
+      </section>
+      <details id="comparisonDetails" class="audit card" hidden><summary>Дополнительное чтение Chandra OCR 2</summary><p class="help">Результат Chandra нужно сопоставлять с фотографией вручную.</p><pre id="comparisonText" class="comparison-raw"></pre></details><details id="auditDetails" class="audit card">
+        <summary><span>Ошибки и сомнительные записи</span><span id="auditCount" class="count-chip">0</span></summary>
+        <div id="auditList" class="audit-list"></div>
+      </details>
         <section id="settings" class="card card-settings">
-          <details id="settingsDetails" open>
+          <details id="settingsDetails">
             <summary class="card-heading">
-              <span class="step">1</span>
-              <span class="card-heading-text"><strong>Подключение Cloud.ru</strong><small>Ключ и модель для чтения фотографий</small></span>
+              <span class="step">⚙</span>
+              <span class="card-heading-text"><strong>Настройки обработки</strong><small>Открывайте при первой настройке или для диагностики</small></span>
               <span class="expand-icon" aria-hidden="true">⌄</span>
             </summary>
             <div class="card-body">
@@ -82,8 +160,9 @@
                     <button class="button button-outline" id="checkConnection" type="button">Проверить подключение</button>
                   </div>
                 </div>
-                <div class="field-row"><label class="field"><span>Экономия ИИ</span><select id="costMode"><option value="off">Выкл. — старый режим</option><option value="economy">Экономный — Qwen VL 8B</option><option value="balanced">Баланс — Qwen VL 30B</option><option value="quality">Точный — основная модель</option></select></label><label class="field"><span>Лимит облачных запросов на фото</span><select id="maxCloudCalls"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label></div><p class="help">Похожие фотографии только помечаются: их нельзя безопасно считать дублями без проверки чисел. Локальные OCR-модули работают, если установлены отдельно.</p><details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
+                <div class="field-row"><label class="field"><span>Режим обработки ИИ</span><select id="costMode"><option value="auto">Авто — локально + Cloud.ru по необходимости</option><option value="off">Выкл. — старый режим</option><option value="economy">Экономный — Qwen VL 8B</option><option value="balanced">Баланс — Qwen VL 30B</option><option value="quality">Точный — основная модель</option></select></label><label class="field"><span>Лимит облачных запросов на фото</span><select id="maxCloudCalls"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label></div><p class="help">Похожие фотографии только помечаются: их нельзя безопасно считать дублями без проверки чисел. Локальные OCR-модули работают, если установлены отдельно.</p><details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
 <div class="advanced-options">
+<label class="inline-check"><input id="autoPipeline" type="checkbox" checked> Автоматическая локальная проверка геометрии и текста (при наличии сервисов)</label>
 <label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
 <label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
 <label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
@@ -100,82 +179,6 @@
             </div>
           </details>
         </section>
-        <section class="card card-upload" id="upload">
-          <div class="card-heading static-heading">
-            <span class="step">2</span>
-            <span class="card-heading-text"><strong>Фотографии</strong><small>Выберите одну или несколько страниц</small></span>
-            <span class="subtle">до 20 МБ / файл</span>
-          </div>
-          <div class="template-bar"><label class="field"><span>Шаблон журнала</span><select id="templateSelect"><option value="weights">Журнал весовой</option></select></label>
-<details class="template-editor"><summary>Новый шаблон колонок</summary>
-<div class="template-form"><input id="templateName" placeholder="Название шаблона"><input id="templateColumns" placeholder="Время, Тара, Брутто, Нетто, Автомобиль">
-<button type="button" class="button button-outline" id="saveTemplate">Сохранить шаблон</button></div></details></div>
-<div class="upload-grid">
-            <div class="upload-left">
-              <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Выбрать фотографии">
-                <span class="upload-icon" aria-hidden="true">↑</span>
-                <strong>Добавить фотографии</strong>
-                <span>Нажмите или перетащите файлы сюда</span>
-                <small>JPG, PNG, WebP, TIFF, BMP, GIF, AVIF, SVG. HEIC — если доступен кодек.</small>
-              </div>
-              <input id="photoFiles" type="file" accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg" hidden multiple>
-              <div class="queue" id="fileQueue" aria-live="polite"></div>
-              <div class="actions upload-actions">
-                <button id="recognize" class="button button-primary" type="button">Распознать <span id="queuedCount"></span></button>
-                <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
-              <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
-              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
-              <p id="humorCaption" class="humor-caption" aria-live="off" hidden></p>
-              <label class="inline-check"><input id="humorEnabled" type="checkbox" checked> Шуточные комментарии ИИ (включая чёрный юмор)</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
-            </div>
-            <div class="preview">
-              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
-              <div class="preview-surface" id="previewSurface">
-                <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
-                <span id="previewEmpty">Здесь появится фотография</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-      <section class="card card-result" id="results">
-        <div class="card-heading result-heading static-heading">
-          <span class="step">3</span>
-          <span class="card-heading-text"><strong>Результат распознавания</strong><small>Исправляйте данные перед выгрузкой</small></span>
-          <div class="actions result-actions">
-            <button id="addRow" type="button" class="button button-outline">+ Строка</button>
-            <button id="download" type="button" class="button button-primary">Скачать Excel</button>
-          </div>
-        </div>
-        <div class="result-summary">
-          <span><strong id="metricRows">0</strong> строк</span>
-          <span><strong id="metricIssues">0</strong> на проверку</span>
-          <span><strong id="metricTons">0,000</strong> тонн нетто</span>
-          <span class="autosave" id="saveStatus">Черновик сохраняется локально</span>
-        </div>
-        <div class="filters">
-          <label class="searchbox"><span class="sr-only">Поиск по таблице</span><input id="search" type="search" placeholder="Поиск по номеру, водителю, примечанию…"></label>
-          <label class="inline-check"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label>
-        </div>
-        <div class="table-scroll">
-          <table aria-label="Распознанные записи журнала">
-            <thead><tr>
-              <th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Сверено</th><th>Проверка</th><th></th>
-            </tr></thead>
-            <tbody id="rowsBody"></tbody>
-          </table>
-          <div id="emptyTable" class="empty">Пока нет записей. Загрузите фотографию или добавьте строку вручную.</div>
-        </div>
-        <div class="result-footer">
-          <span id="tableCount">0 записей</span>
-          <button id="approveMemory" class="button button-outline" type="button">Запомнить подтверждённые ТС и водителей</button>
-          <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
-        </div>
-      </section>
-      <details id="comparisonDetails" class="audit card" hidden><summary>Дополнительное чтение Chandra OCR 2</summary><p class="help">Результат Chandra нужно сопоставлять с фотографией вручную.</p><pre id="comparisonText" class="comparison-raw"></pre></details><details id="auditDetails" class="audit card">
-        <summary><span>Ошибки и сомнительные записи</span><span id="auditCount" class="count-chip">0</span></summary>
-        <div id="auditList" class="audit-list"></div>
-      </details>
       <footer>Подтверждайте сомнительные цифры по оригиналу. ИИ не гарантирует точного чтения почерка.</footer>
     </section>
     <section class="workspace-page legion-workspace" id="legionWorkspace" hidden>

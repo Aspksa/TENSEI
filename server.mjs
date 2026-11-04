@@ -15,7 +15,7 @@ import {analyzeLocalGrid} from './lib/optional-ocr.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
-import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from './lib/document-intelligence.mjs';
+import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
 
@@ -34,8 +34,8 @@ async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.r
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,autoPipeline:o.autoPipeline!==false,costMode:['off','auto','economy','balanced','quality'].includes(o.costMode)?o.costMode:'auto',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,autoPipeline:true,costMode:'auto',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -85,7 +85,7 @@ function identity(input,cfg,template){
   const bytes=Buffer.from(String(input.image||''));
   if(bytes.length>28000000)throw Error('Слишком большой файл');
   return createHash('sha256').update(bytes).update(cfg.model)
-    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,cfg.gridSegmentation,template.id])).digest('hex');
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,cfg.gridSegmentation,cfg.autoPipeline,template.id])).digest('hex');
 }
 async function recognize(input){
   const cfg=await settings();
@@ -121,10 +121,12 @@ async function recognize(input){
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const similar=(await tasks()).filter(t=>t.status==='done'&&t.imageHash&&hashDistance(t.imageHash,result.imageHash)<=4).slice(0,3).map(t=>({id:t.id,name:t.name}));
-    const confidence=confidenceReport(result.rows);
-    const documentType=classifyDocument(result.rows,template);
-    const memoryHints=approvedHints(result.rows,await approvedMemory());
-    const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+    const dictionary=await approvedMemory();
+    const memoryHints=approvedHints(result.rows,dictionary);
+    const verifiedRows=markUnknownVehicles(result.rows,dictionary);
+    const confidence=confidenceReport(verifiedRows);
+    const documentType=classifyDocument(verifiedRows,template);
+    const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
@@ -138,7 +140,7 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,layout:result.layout,rows:result.rows,confidence,documentType,memoryHints,
+      quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,
       localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
@@ -206,7 +208,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
-        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,gridSegmentation:cfg.gridSegmentation,
+        localText:cfg.localText,localVl:cfg.localVl,cvPreprocess:cfg.cvPreprocess,gridSegmentation:cfg.gridSegmentation,autoPipeline:cfg.autoPipeline,
         costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -219,8 +221,8 @@ const server=http.createServer(async(req,res)=>{
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
         paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
         localText:payload.localText===true,localVl:payload.localVl===true,cvPreprocess:payload.cvPreprocess===true,
-        gridSegmentation:payload.gridSegmentation===true,
-        costMode:['off','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
+        gridSegmentation:payload.gridSegmentation===true,autoPipeline:payload.autoPipeline===true,
+        costMode:['off','auto','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
         maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
     }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from '../lib/document-intelligence.mjs';
+import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from '../lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from '../lib/processing-queue.mjs';
 
 test('low confidence cannot silently become reviewed',()=>{
@@ -31,4 +31,14 @@ test('scheduler continues after failed task and diagnostics avoid fabricated pri
   assert.equal(s.totalReportedTokens,100);
   assert.equal(s.reportedPhotos,1);
   assert.equal(s.estimatedCostRub,null);
+});
+
+test('unknown vehicle is flagged only against a nonempty approved registry',()=>{
+  const src=[{vehicle:'А123',reviewed:false},{vehicle:'В555',reviewed:false}];
+  assert.equal(markUnknownVehicles(src,{vehicles:[]})[1].vehicleUnlisted,false);
+  const out=markUnknownVehicles(src,{vehicles:['А123']});
+  assert.equal(out[0].vehicleUnlisted,false);
+  assert.equal(out[1].vehicleUnlisted,true);
+  assert.equal(out[1].reviewed,false);
+  assert.equal(src[1].vehicleUnlisted,undefined);
 });

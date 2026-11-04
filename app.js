@@ -37,6 +37,7 @@ function inspect(items){
     const issues=[];
     if(row.uncertain&&!row.reviewed)issues.push('Модель не уверена в записи');
     if(!text(row.vehicle).trim())issues.push('Нет номера автомобиля');
+    if(row.vehicleUnlisted&&!row.reviewed)issues.push('ТС нет в подтверждённом справочнике');
     if(row.time&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(row.time))issues.push('Проверьте время');
     const gross=asWeight(row.gross),tare=asWeight(row.tare),net=asWeight(row.net);
     if(gross===null&&net===null)issues.push('Нет данных о весе');
@@ -52,6 +53,20 @@ function inspect(items){
     seen.add(fingerprint);
     return {row,index,issues};
   });
+}
+let lastVerifiedExcelSignature='',verifiedExcelTimer=null;
+function scheduleVerifiedExcel(){
+  clearTimeout(verifiedExcelTimer);
+  if(state.busy||!$('autoExcel')?.checked||state.rows.length===0)return;
+  const checked=inspect(state.rows);
+  if(checked.some(({row,issues})=>!row.reviewed||issues.length))return;
+  const signature=JSON.stringify(state.rows);
+  if(signature===lastVerifiedExcelSignature)return;
+  verifiedExcelTimer=setTimeout(()=>{
+    if(state.busy||!$('autoExcel').checked||state.rows.some(r=>!r.reviewed)||inspect(state.rows).some(x=>x.issues.length))return;
+    lastVerifiedExcelSignature=signature;
+    $('download').click();
+  },850);
 }
 function updateSummary(){
   const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length).length;
@@ -78,6 +93,7 @@ function queueSave(){
 }
 function updateRecords(){
   updateSummary();
+  scheduleVerifiedExcel();
   renderTable();
   renderAudit();
   queueSave();
@@ -92,8 +108,12 @@ function cell(index,key,row){
       status('Неверное число в строке '+(index+1)+'. Используйте цифры, пробел и десятичную запятую.','error');
       input.value=text(row[key]);return;
     }
+    const previousValue=row[key];
     row[key]=['tare','gross','net'].includes(key)?(value===''?null:asWeight(value)):value;
     if(key==='vehicle')row.vehicle=text(row.vehicle).toUpperCase();
+    // A previously reviewed row needs a new manual review after any edit.
+    if(previousValue!==row[key]){row.reviewed=false;
+      if(key==='vehicle')row.vehicleUnlisted=true;}
     if(['tare','gross'].includes(key)&&row.net===null&&Number.isFinite(asWeight(row.gross))&&Number.isFinite(asWeight(row.tare))&&row.gross>=row.tare)row.net=row.gross-row.tare;
     updateRecords();
   });
@@ -215,6 +235,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
       localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
+      autoPipeline:$('autoPipeline').checked,
       gridSegmentation:$('gridSegmentation').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
@@ -340,8 +361,21 @@ $('recognize').onclick=async()=>{
   }
   state.busy=true;drawQueue();$('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
   const batch=[...state.queue];state.queue=[];
+  const batchStates=batch.map(file=>({file,status:'В очереди',kind:'queued'}));
+  const batchBox=$('batchStatus');
+  const updateBatch=(index,phase,kind)=>{
+    batchStates[index].status=phase;batchStates[index].kind=kind;
+    batchBox.replaceChildren();
+    batchStates.forEach(entry=>{
+      const node=document.createElement('div');node.className='batch-status-item '+entry.kind;node.setAttribute('role','listitem');
+      const name=document.createElement('strong');name.textContent=entry.file.name;
+      const label=document.createElement('span');label.textContent=entry.status;
+      node.append(name,label);batchBox.append(node);
+    });
+  };
+  if(batch.length)updateBatch(0,'Ожидает обработки','queued');
   const failed=[],failures=new Set();
-  let done=0,usedModel='';
+  let done=0,usedModel='',activeIndex=0;
   let activePhase='Обработка';
   const nextJoke=createHumorRotator();
   const drawJoke=()=>{
@@ -352,12 +386,16 @@ $('recognize').onclick=async()=>{
   };
   drawJoke();
   const jokeTimer=setInterval(drawJoke,4500);
-  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
+  const updateSteps=step=>{const nodes=[...$('photoStatusSteps').children];nodes.forEach((node,i)=>{node.classList.toggle('active',i===step);node.classList.toggle('completed',i<step)});};
+  updateSteps(0);
+  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';if(activeIndex<batchStates.length)updateBatch(activeIndex,activePhase,'active');const phase=activePhase.toLowerCase();updateSteps(/формирован|провер|chandra|сомнител/.test(phase)?3:/cloud|ocr|распозн|строк/.test(phase)?2:/подготов|opencv|paddle|изображ/.test(phase)?1:0);const percent=Math.min(95,Math.round((activeIndex+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(activeIndex+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
   try{
     for(const [index,file] of batch.entries()){
+      activeIndex=index;
       $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
       $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
       showPreview(file);
+      updateBatch(index,'Подготовка фотографии','active');
       activePhase='Подготовка фотографии';drawJoke();
       try{
         const result=await api('recognize',{image:await fileData(file),name:file.name,
@@ -375,12 +413,15 @@ $('recognize').onclick=async()=>{
           $('comparisonText').textContent=result.comparison.raw;
         }
         done++;
+        updateBatch(index,result.cached?'Готово · из кэша':'Готово · '+(result.rows?.length||0)+' строк','done');
+        updateSteps(4);
         updateRecords();
         await refreshTasks().catch(()=>{});
-      }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
+      }catch(e){failed.push(file);failures.add(e.message);updateBatch(index,'Ошибка · '+e.message.slice(0,100),'error');await refreshTasks().catch(()=>{})}
     }
     state.queue.push(...failed);
     $('progressBar').style.width='100%';
+    updateSteps(failed.length?3:4);
     $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
     if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
     else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
@@ -393,6 +434,11 @@ $('recognize').onclick=async()=>{
 };
 $('search').oninput=renderTable;
 $('onlyIssues').onchange=renderTable;
+$('reviewIssues').onclick=()=>{$('onlyIssues').checked=true;renderTable();$('results').scrollIntoView({behavior:'smooth',block:'start'});};
+$('autoExcel').onchange=()=>{if($('autoExcel').checked)scheduleVerifiedExcel();};
+$('navSettings').onclick=()=>{$('navPhoto').click();$('settingsDetails').open=true;};
+document.querySelector('.toplink')?.addEventListener('click',()=>{$('settingsDetails').open=true;});
+$('navReview').onclick=()=>{$('navPhoto').click();$('onlyIssues').checked=true;renderTable();};
 $('addRow').onclick=()=>{
   if(state.busy)return;
   state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
@@ -563,9 +609,11 @@ async function initialize(){
     $('localVl').checked=cfg.localVl===true;
     $('cvPreprocess').checked=cfg.cvPreprocess===true;
     $('gridSegmentation').checked=cfg.gridSegmentation===true;
-    $('costMode').value=cfg.costMode||'off';
+    $('autoPipeline').checked=cfg.autoPipeline!==false;
+    $('costMode').value=cfg.costMode||'auto';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
+    if(!state.hasKey)$('settingsDetails').open=true;
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey
       ?'Ключ уже сохранён на диске. Для замены введите новый, затем нажмите «Сохранить».'
