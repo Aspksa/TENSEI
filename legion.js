@@ -5,7 +5,8 @@ const setBusy=flag=>{
   state.busy=flag;
   for(const id of ['legionCsvFile','legionMasterFile','legionGenerate','legionDownloadZip','legionExportMaster']){
     const el=$(id);if(el)el.disabled=flag||(id==='legionDownloadZip'&&!state.lastReport)||
-      (id==='legionGenerate'&&!state.importId);
+      (id==='legionGenerate'&&(!state.importId||!state.preview?.audit?.ready||
+        (!!state.preview?.errors?.length&&!$('legionAcceptSkipped').checked)));
   }
 };
 function showPage(name){
@@ -79,6 +80,7 @@ function drawBase(){
     const desc=document.createElement('span');desc.textContent=(v.model||'НЕТ МОДЕЛИ')+' · '+(v.driver||'НЕТ ВОДИТЕЛЯ');
     button.append(no,desc);
     button.onclick=()=>{
+      $('legionVehicleForm').closest('details').open=true;
       $('legionPlate').value=v.plate;
       $('legionModel').value=v.model||'';
       $('legionDriver').value=v.driver||'';
@@ -143,8 +145,10 @@ function showUnknown(unknown){
     const button=document.createElement('button');button.type='button';button.textContent=item.plate;
     button.title='Из CSV: '+(item.csvDriver||'водитель не указан')+'. Заполните модель и водителя вручную.';
     button.onclick=()=>{
-      $('legionPlate').value=item.plate;$('legionModel').value='';
-      $('legionDriver').value='';
+      $('legionVehicleForm').closest('details').open=true;
+      $('legionPlate').value=item.plate;
+      $('legionModel').value=item.suggestion?.model||'';
+      $('legionDriver').value=item.suggestion?.driver||'';
       $('legionPlate').scrollIntoView({behavior:'smooth',block:'center'});
       $('legionModel').focus();
     };
@@ -169,6 +173,20 @@ function drawPreview(result){
     fragment.append(tr);
   }
   $('legionGroups').append(fragment);
+  const audit=result.audit||{ready:false,duplicates:[],critical:[],notices:[]};
+  const panel=$('legionAudit');panel.replaceChildren();panel.hidden=false;
+  const headline=document.createElement('strong');headline.textContent=audit.ready&&!(result.errors||[]).length?
+    'Проверка пройдена · можно создавать Excel':
+    'Требуется проверка: '+(audit.duplicates?.length||0)+' дублей, '+(audit.critical?.length||0)+' критических замечаний';
+  panel.append(headline);
+  const detail=document.createElement('p');detail.textContent='Контроль веса: '+formatTons(audit.totalTonnes||0)+
+    ' т · '+(audit.count||0)+' рейсов · '+(result.sourceFiles||[]).length+' CSV';panel.append(detail);
+  for(const item of [...(audit.duplicates||[]).slice(0,4).map(x=>'Дубль: строка '+x.line+' и '+x.firstLine),
+    ...(audit.critical||[]).slice(0,6).map(x=>'Строка '+x.line+': '+x.message)]){
+    const line=document.createElement('p');line.textContent=item;panel.append(line);
+  }
+  $('legionStage').textContent=audit.ready&&!(result.errors||[]).length?'Проверено · готово к формированию Excel':
+    'На проверке · дубли / сведения ТС / вес';
   const errors=$('legionErrors');errors.replaceChildren();
   errors.hidden=!(result.errors?.length);
   if(result.errors?.length){
@@ -178,7 +196,8 @@ function drawPreview(result){
     errors.append(strong,p);
   }
   showUnknown(result.unknown);
-  $('legionGenerate').disabled=false;
+  $('legionGenerate').disabled=!audit.ready||
+    (!!result.errors?.length&&!$('legionAcceptSkipped').checked);
   $('legionImportStatus').textContent='Загружено '+result.count+
     ' рейсов. Групп отчётов: '+(result.groups?.length||0)+'.';
 }
@@ -187,44 +206,63 @@ async function restorePreview(id){
   drawPreview(result);return result;
 }
 $('legionCsvFile').onchange=async event=>{
-  const file=event.target.files?.[0];event.target.value='';
-  if(!file)return;
-  if(file.size>15*1024*1024)return notice('CSV больше 15 МБ.','error');
+  const files=[...(event.target.files||[])];event.target.value='';
+  if(!files.length)return;
+  if(files.length>8)return notice('За один пакет можно загрузить не больше 8 CSV.','error');
+  if(files.some(file=>file.size>8*1024*1024))
+    return notice('Один из CSV больше 8 МБ. Разделите его на части.','error');
   if(state.busy)return;
   setBusy(true);
-  $('legionImportStatus').textContent='Читаю '+file.name+'…';
+  $('legionStage').textContent='Импортирую '+files.length+' CSV · проверяю даты и веса…';
+  $('legionImportStatus').textContent='Читаю '+files.length+' CSV…';
   try{
-    const result=await api('import-csv',{file:await readAsDataURL(file),name:file.name});
+    const result=files.length===1?
+      await api('import-csv',{file:await readAsDataURL(files[0]),name:files[0].name}):
+      await api('import-batch',{files:await Promise.all(files.map(async file=>({
+        name:file.name,file:await readAsDataURL(file)
+      })))});
     drawPreview(result);
-    notice('CSV прочитан: '+result.count+' рейсов, '+(result.groups?.length||0)+
-      ' товаров. '+(result.summary?.unknownVehicles?.length||0)+' автомобилей с неполными данными.',
-      result.errors?.length?'info':'success');
-    if($('legionAutoGenerate').checked&&!result.errors?.length){
+    notice('Импорт завершён: '+result.count+' рейсов, '+(result.groups?.length||0)+
+      ' товаров. '+(result.audit?.needsReview||0)+' замечаний на проверку.',
+      result.audit?.ready&&!result.errors?.length?'success':'info');
+    if($('legionAutoGenerate').checked&&result.audit?.ready&&!result.errors?.length){
       setBusy(false);await generate();
     }
-  }catch(e){$('legionImportStatus').textContent='Ошибка импорта CSV';notice(e.message,'error')}
-  finally{setBusy(false)}
+  }catch(e){
+    $('legionStage').textContent='Ошибка импорта';
+    $('legionImportStatus').textContent='Ошибка CSV';
+    notice(e.message,'error');
+  }finally{setBusy(false)}
 };
+
 async function generate(){
   if(!state.importId||state.busy)return;
+  if(!state.preview?.audit?.ready||
+     (state.preview?.errors?.length&&!$('legionAcceptSkipped').checked))
+    return notice('Сначала исправьте критические замечания CSV и заполните базу ТС.','error');
   setBusy(true);
+  $('legionStage').textContent='Формирую сводный Excel и отчёты по товарам…';
   $('legionOutputStatus').textContent='Формирую отчёты Excel и ZIP…';
   try{
     const coefficient=$('legionCoefficient').value.trim().replace(',','.');
     const response=await api('generate',{importId:state.importId,coefficient,
       acceptSkipped:$('legionAcceptSkipped').checked});
     state.lastReport=response;
+    $('legionStage').textContent='Готово · контроль тоннажа пройден · ZIP сохранён';
     $('legionOutputStatus').textContent='Готово. Создано '+response.files.length+
       ' Excel-отчётов. Папка: '+response.folder;
-    notice('Отчёты созданы и сохранены рядом с TENSEI. '+response.files.map(f=>
+    notice('Сводный Excel: '+response.overview+'. Отчёты созданы рядом с TENSEI. '+response.files.map(f=>
       f.product+': '+f.count+' рейсов, '+formatTons(f.tonnes)+' т').join(' | '),
       'success');
     await refreshReports().catch(()=>{});
     await downloadBlob('/api/legion/download/'+response.reportId,response.zip);
-  }catch(e){$('legionOutputStatus').textContent='Ошибка формирования отчётов';notice(e.message,'error')}
+  }catch(e){$('legionStage').textContent='Ошибка проверки / формирования';$('legionOutputStatus').textContent='Отчёт не сформирован';notice(e.message,'error')}
   finally{setBusy(false)}
 }
 $('legionGenerate').onclick=generate;
+$('legionAcceptSkipped').onchange=()=>{if(state.preview&&!state.busy)
+  $('legionGenerate').disabled=!state.preview.audit?.ready||
+    (!!state.preview.errors?.length&&!$('legionAcceptSkipped').checked)};
 $('legionDownloadZip').onclick=async()=>{
   if(!state.lastReport)return;
   try{await downloadBlob('/api/legion/download/'+state.lastReport.reportId,state.lastReport.zip)}
