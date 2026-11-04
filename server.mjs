@@ -175,18 +175,19 @@ async function excel(raw){
   sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
   records.forEach((r,i)=>{
     const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
-      r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',r.issues.length?'ПРОВЕРИТЬ':'OK',r.issues.join('; ')]);
+      r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',(r.issues.length||!r.reviewed)?'ПРОВЕРИТЬ':'OK',
+      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; ')]);
     for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
     row.getCell(8).numFmt='0.000';
-    if(r.issues.length)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
+    if(r.issues.length||!r.reviewed)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
     else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
   });
   sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:13}};
   sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
   sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
   const summary=book.addWorksheet('Контроль');
-  summary.addRows([['Проверка','Значение'],['Всего строк',records.length],['С замечаниями',records.filter(x=>x.issues.length).length],
-    ['Без замечаний',records.filter(x=>!x.issues.length).length],['Итог нетто, т',records.reduce((s,x)=>s+(x.net??0),0)/1000]]);
+  summary.addRows([['Проверка','Значение'],['Всего строк',records.length],['Проверить',records.filter(x=>x.issues.length||!x.reviewed).length],
+    ['Проверено без замечаний',records.filter(x=>!x.issues.length&&x.reviewed).length],['Итог нетто, т',records.reduce((s,x)=>s+(x.net??0),0)/1000]]);
   summary.getColumn(1).width=27;summary.getColumn(2).width=20;
   summary.getCell('B5').numFmt='0.000';
   summary.getRow(1).font={bold:true};
