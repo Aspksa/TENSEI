@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#f5f7fa">
   <title>TENSEI — распознавание журналов</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/legion.css">
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/legion.js"></script>
 </head>
 <body>
   <div class="app">
@@ -22,7 +24,21 @@
         </div>
       </div>
     </header>
+    <div class="app-shell">
+    <aside class="side-menu" aria-label="Меню TENSEI">
+      <div class="side-title">РАЗДЕЛЫ</div>
+      <button id="navPhoto" type="button" class="side-link active" aria-current="page">
+        <span class="side-icon" aria-hidden="true">▧</span>
+        <span><strong>Распознавание фото</strong><small>Журналы → Excel</small></span>
+      </button>
+      <button id="navLegion" type="button" class="side-link">
+        <span class="side-icon" aria-hidden="true">▤</span>
+        <span><strong>Легион · отчёты</strong><small>CSV карьера → XLSX</small></span>
+      </button>
+      <div class="side-bottom"><span>ЛОКАЛЬНО</span><small>Проверка данных · Excel · архив отчётов</small></div>
+    </aside>
     <main class="container" id="top">
+    <section id="photoWorkspace" class="workspace-page">
       <div class="heading">
         <div>
           <div class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div>
@@ -153,6 +169,98 @@
         <div id="auditList" class="audit-list"></div>
       </details>
       <footer>Подтверждайте сомнительные цифры по оригиналу. ИИ не гарантирует точного чтения почерка.</footer>
+    </section>
+    <section class="workspace-page legion-workspace" id="legionWorkspace" hidden>
+      <div class="heading legion-heading">
+        <div><div class="eyebrow">ЛЕГИОН / РАБОТА С CSV</div><h1>Автоматические отчёты с карьера</h1>
+          <p>Загрузите CSV — TENSEI распределит рейсы по товарам и создаст Excel по образцу «01.11 Хороль».</p>
+        </div><span class="legion-badge">Тонны / 1,55 · по заданной формуле</span>
+      </div>
+      <div id="legionNotice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div class="legion-stats" role="group" aria-label="Сводка по файлу">
+        <div><span>Рейсов</span><strong id="legionStatTrips">0</strong></div>
+        <div><span>Тонн нетто</span><strong id="legionStatTons">0,000</strong></div>
+        <div><span>Товаров</span><strong id="legionStatProducts">0</strong></div>
+        <div><span>Машин без полных данных</span><strong id="legionStatUnknown">0</strong></div>
+      </div>
+      <div class="legion-columns">
+        <div class="legion-main">
+          <article class="card legion-card">
+            <div class="legion-card-header"><span class="legion-step">01</span>
+              <div><h2>CSV с карьера</h2><p>Поддерживаются UTF-8 и Windows-1251, разделитель «;» и кавычки.</p></div>
+            </div>
+            <label class="legion-file-picker" for="legionCsvFile">
+              <span class="legion-file-icon">↑</span>
+              <span><strong>Выбрать CSV-файл</strong><small id="legionCsvFileName">Файл не выбран</small></span>
+              <span class="legion-file-action">Обзор…</span>
+            </label>
+            <input id="legionCsvFile" type="file" accept=".csv,text/csv" hidden>
+            <p id="legionImportStatus" class="help">После выбора файл будет прочитан локальным сервером TENSEI.</p>
+            <label class="inline-check legion-check"><input id="legionAutoGenerate" type="checkbox" checked>
+              Автоматически создавать отчёты после загрузки CSV, если нет ошибок строк</label>
+          </article>
+          <article class="card legion-card">
+            <div class="legion-card-header"><span class="legion-step">02</span>
+              <div><h2>Распределение и проверка</h2><p>Каждый рейс остаётся отдельной строкой. Разные товары — разные XLSX.</p></div>
+            </div>
+            <div id="legionPreviewEmpty" class="legion-empty">Сначала выберите CSV с карьера. Здесь появятся товары, суммы и неизвестные машины.</div>
+            <div id="legionPreview" hidden>
+              <div class="legion-table-scroll"><table><thead><tr>
+                <th>Дата</th><th>Товар</th><th>Рейсов</th><th>Машин</th><th>Нетто, т</th></tr></thead>
+                <tbody id="legionGroups"></tbody></table></div>
+              <div class="legion-errors" id="legionErrors" hidden></div>
+              <div class="legion-unknown" id="legionUnknown" hidden></div>
+              <div class="legion-settings-inline">
+                <label class="field">Коэффициент / расстояние
+                  <input id="legionCoefficient" type="text" inputmode="decimal" value="1,55">
+                </label>
+                <label class="inline-check"><input id="legionAcceptSkipped" type="checkbox">
+                  Разрешить отчёт без ошибочных строк (только после проверки ошибок)</label>
+              </div>
+              <div class="actions">
+                <button id="legionGenerate" type="button" class="button button-primary">Создать Excel-отчёты</button>
+                <button id="legionDownloadZip" type="button" class="button button-outline" disabled>Скачать ZIP</button>
+              </div>
+              <p id="legionOutputStatus" class="help"></p>
+            </div>
+          </article>
+          <article class="card legion-card">
+            <div class="legion-card-header"><span class="legion-step">03</span>
+              <div><h2>Готовые отчёты</h2><p>XLSX по каждому товару и дате сохраняются на компьютере.</p></div>
+            </div>
+            <p class="help" id="legionReportsFolder">Папка отчётов определяется после запуска.</p>
+            <div id="legionReportHistory" class="legion-history"></div>
+          </article>
+        </div>
+        <div class="legion-aside">
+          <article class="card legion-card">
+            <div class="legion-card-header"><span class="legion-step">ТС</span>
+              <div><h2>База автомобилей</h2><p>Марка и водитель — только из базы, без догадок.</p></div>
+            </div>
+            <p class="help" id="legionBaseStatus">Загружаю базу ТС…</p>
+            <label class="legion-file-picker compact" for="legionMasterFile">
+              <span class="legion-file-icon">⇧</span><span><strong>Импорт из Excel</strong>
+                <small>«База ТС» или отчёт «01.11 Хороль.xlsx»</small></span>
+            </label>
+            <input id="legionMasterFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+            <div class="actions"><button id="legionExportMaster" type="button" class="button button-outline">Скачать мастер XLSX</button></div>
+            <div class="legion-subtitle">Добавить или исправить автомобиль</div>
+            <form id="legionVehicleForm" class="legion-vehicle-form">
+              <label class="field">Госномер<input id="legionPlate" required maxlength="20" placeholder="Н508КО"></label>
+              <label class="field">Марка / модель<input id="legionModel" maxlength="110" placeholder="Scania"></label>
+              <label class="field">Водитель<input id="legionDriver" maxlength="110" placeholder="Фамилия И.О."></label>
+              <button class="button button-primary" type="submit">Сохранить в «База ТС»</button>
+            </form>
+            <div class="legion-subtitle">Справочник</div>
+            <input id="legionBaseSearch" type="search" placeholder="Поиск по номеру или фамилии">
+            <div class="legion-base-list" id="legionBaseList"></div>
+            <p class="help">Неизвестные номера А905УО и С301СВ будут отмечены «НЕТ В БАЗЕ», пока вы не добавите их данные.</p>
+          </article>
+        </div>
+      </div>
+      <footer>Тонно-километры в этой автоматизации рассчитываются по указанной формуле «тонны / 1,55». Обычные физические т·км рассчитывают умножением.</footer>
+    </section>
     </main>
+  </div>
   </div>
 </body></html>
