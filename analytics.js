@@ -55,7 +55,7 @@ function graph(id,values){
 }
 function draw(){
   if(!snapshot)return;
-  const data=snapshot,metric=$('metric').value,scale=n=>metric==='tons'?n/1000:n;
+  const data=snapshot,metric=$('metric').value,scale=x=>metric==='tons'?x.netKg/1000:x.trips;
   $('totalTons').textContent=num(data.totals.tonnes)+' т';
   $('totalTrips').textContent=num(data.totals.trips);
   $('activeVehicles').textContent=num(data.totals.vehicles);
@@ -70,23 +70,19 @@ function draw(){
   const values=(list,key='netKg')=>list.map(x=>[x.plate||x.name||x.date||x.hour,
     metric==='tons'?Number(x[key]||0)/1000:Number(x.trips||0)]);
   graph('vehicles',values(data.vehicles.slice(0,10)));
-  graph('products',data.products.map(x=>[x.name,scale(x.netKg)]));
-  const hours=new Map();
-  for(const row of data.trips||[]){if(!row.time)continue;
-    const hour=row.time.slice(0,2)+':00';
-    hours.set(hour,(hours.get(hour)||0)+(metric==='tons'?row.netKg/1000:1));}
-  graph('hours',[...hours].sort((a,b)=>a[0].localeCompare(b[0])));
-  graph('daily',data.daily.map(x=>[x.date,scale(x.netKg)]));
-  const perDay=new Map(data.daily.map(x=>[x.date,x.netKg]));
-  const top=Math.max(1,...data.daily.map(x=>x.netKg));
+  graph('products',data.products.map(x=>[x.name,scale(x)]));
+  graph('hours',data.hours.map(x=>[x.hour,scale(x)]));
+  graph('daily',data.daily.map(x=>[x.date,scale(x)]));
+  const perDay=new Map(data.daily.map(x=>[x.date,scale(x)]));
+  const top=Math.max(1,...data.daily.map(x=>scale(x)));
   const start=new Date();start.setHours(12,0,0,0);start.setDate(start.getDate()-29);
   $('calendar').innerHTML=Array.from({length:30},(_,i)=>{
     const date=new Date(start);date.setDate(date.getDate()+i);
     const day=[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),
       String(date.getDate()).padStart(2,'0')].join('-');
-    const kg=perDay.get(day)||0,alpha=(.12+.78*kg/top).toFixed(2);
+    const value=perDay.get(day)||0,alpha=(.12+.78*value/top).toFixed(2);
     return '<div class="day '+(!kg?'empty':'')+'" title="'+esc(day)+' — '+
-      num(kg/1000)+' т" style="background:rgba(88,170,250,'+alpha+')">'+date.getDate()+'</div>';
+      num(value)+(metric==='tons'?' т':' рейсов')+'" style="background:rgba(88,170,250,'+alpha+')">'+date.getDate()+'</div>';
   }).join('');
   const tbody=$('fleetTable');tbody.replaceChildren();
   for(const car of data.vehicles){
