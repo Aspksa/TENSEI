@@ -2,21 +2,27 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
-import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
+import {listCloudModels} from './lib/cloud.mjs';
+import {processPhoto} from './lib/workflow.mjs';
+import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
 const settingsPath=path.join(dataDir,'settings.json');
 const draftPath=path.join(dataDir,'draft.json');
-const prompt='Прочитай фото рукописного журнала отгрузок/взвешиваний. Верни ТОЛЬКО валидный JSON объект с массивом rows. Формат строки: {"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}. Каждое физическое событие/рейс — отдельная строка; не удаляй повторы ТС. Вес в килограммах, не тоннах. Извлекай значения строго из соответствующих колонок; не выдумывай сведения. Если символы неразборчивы, оставляй поле пустым/null и uncertain=true, объясни в note. Не вычисляй неизвестные значения в уме. Сохраняй порядок строк. Никакого markdown.';
+const tasksPath=path.join(dataDir,'tasks.json');
+const templatesPath=path.join(dataDir,'templates.json');
+const sourceDir=path.join(dataDir,'sources');
 
 async function settings(){
-  try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true};throw Error('Ошибка чтения настроек')}
+  try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -43,15 +49,63 @@ function cloudError(status){
   if(status===402)return 'Cloud.ru: недостаточно средств';
   return 'Cloud.ru вернул HTTP '+status+'. Проверьте ID модели, её доступность и подключение.';
 }
+async function tasks(){
+  try{const o=JSON.parse(await fs.readFile(tasksPath,'utf8'));return Array.isArray(o)?o:[]}
+  catch(e){if(e.code==='ENOENT')return [];throw Error('Не удалось открыть историю заданий')}
+}
+let updateChain=Promise.resolve();
+async function updateTask(task){
+  updateChain=updateChain.catch(()=>{}).then(async()=>{
+    const list=await tasks();
+    const i=list.findIndex(x=>x.id===task.id);
+    if(i>=0)list[i]={...list[i],...task};
+    else list.unshift(task);
+    await writeJson(tasksPath,list.slice(0,200));
+  });
+  return updateChain;
+}
+async function savedTemplates(){
+  try{const list=JSON.parse(await fs.readFile(templatesPath,'utf8'));return Array.isArray(list)?list.slice(0,25):[]}
+  catch(e){if(e.code==='ENOENT')return [];throw Error('Ошибка чтения шаблонов')}
+}
+function identity(input,cfg,template){
+  const bytes=Buffer.from(String(input.image||''));
+  if(bytes.length>28000000)throw Error('Слишком большой файл');
+  return createHash('sha256').update(bytes).update(cfg.model)
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,template.id])).digest('hex');
+}
 async function recognize(input){
   const cfg=await settings();
   if(!cfg.key)throw Error('Сначала сохраните API-ключ Cloud.ru');
-  const converted=await prepareImage(input.image);
-  const result=await recognizeWithFallback({key:cfg.key,model:cfg.model,
-    image:converted.image,prompt,fallback:cfg.fallback});
-  const rows=parseModel(result.text).map(r=>({...r,source:String(input.name||'').slice(0,180)}));
-  return {rows,usage:result.usage,format:converted.originalFormat,model:result.model,
-    fallbackFrom:result.fallbackFrom||null};
+  if(typeof input.image!=='string')throw Error('Нужна фотография');
+  const templates=[...BUILTIN_TEMPLATES,...await savedTemplates()];
+  const template=templates.find(t=>t.id===String(input.templateId||'weights'))||BUILTIN_TEMPLATES[0];
+  const hash=identity(input,cfg,template);
+  const previous=(await tasks()).find(x=>x.hash===hash&&x.status==='done'&&Array.isArray(x.rows));
+  if(previous&&!input.force){
+    return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
+      warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
+      comparison:previous.comparison||null};
+  }
+  const id=createHash('sha256').update(hash+Date.now()).digest('hex').slice(0,24);
+  const task={id,name:String(input.name||'Фото').slice(0,160),hash,templateId:template.id,
+    model:cfg.model,status:'processing',attempts:1,startedAt:new Date().toISOString()};
+  await updateTask(task);
+  try{
+    const result=await processPhoto({image:input.image,name:task.name,cfg,template,
+      paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL});
+    await fs.mkdir(sourceDir,{recursive:true});
+    const filename=path.join(sourceDir,result.sourceId+'.jpg');
+    await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
+    const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+      warnings:result.warnings,quality:result.quality,layout:result.layout,
+      comparison:result.comparison,attempts:result.attempts};
+    await updateTask({...task,...output,status:'done',finishedAt:new Date().toISOString()});
+    return output;
+  }catch(e){
+    await updateTask({...task,status:'error',error:String(e.message||e).slice(0,260),finishedAt:new Date().toISOString()});
+    throw e;
+  }
 }
 async function excel(raw){
   const records=safeRows(raw);
@@ -101,7 +155,8 @@ const server=http.createServer(async(req,res)=>{
       return res.end(await fs.readFile(path.join(root,filename)));
     }
     if(req.method==='GET'&&url.pathname==='/api/settings'){
-      const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback});
+      const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
+        cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
       const payload=await json(req),previous=await settings();
@@ -109,7 +164,9 @@ const server=http.createServer(async(req,res)=>{
       if(model.length>140||!/^[-a-zA-Z0-9_./]+$/.test(model))throw Error('Некорректный ID модели');
       const key=String(payload.key||previous.key||'').trim();
       if(key.length>2048)throw Error('API-ключ слишком длинный');
-      await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false});
+      await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false,
+        cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
+        paddle:payload.paddle===true,chandra:payload.chandra===true});
       return send(res,200,{ok:true,hasKey:!!key,model});
     }
     if(req.method==='GET'&&url.pathname==='/api/connection'){
@@ -122,6 +179,27 @@ const server=http.createServer(async(req,res)=>{
         available:suggested,availableCount:list.length,
         reason:chosen?'Выбранная модель есть в каталоге API. Работа с фото ещё не проверена.':
           'Выбранной модели нет в списке API для этого ключа. Выберите доступную модель ниже.'});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/tasks'){
+      return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/templates'){
+      return send(res,200,{templates:[...BUILTIN_TEMPLATES,...await savedTemplates()]});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/templates'){
+      const incoming=await json(req),existing=await savedTemplates();
+      const t=createTemplate(incoming,existing);
+      const rest=existing.filter(x=>x.id!==t.id);
+      if(rest.length>=24)throw Error('Максимум 25 пользовательских шаблонов');
+      await writeJson(templatesPath,[...rest,t]);
+      return send(res,200,{ok:true,template:t});
+    }
+    const sourceMatch=/^\/api\/source\/([0-9a-f-]{36})$/.exec(url.pathname);
+    if(req.method==='GET'&&sourceMatch){
+      const buffer=await fs.readFile(path.join(sourceDir,sourceMatch[1]+'.jpg'));
+      res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, max-age=60',
+        'X-Content-Type-Options':'nosniff'});
+      return res.end(buffer);
     }
     if(req.method==='GET'&&url.pathname==='/api/draft')return send(res,200,await getDraft());
     if(req.method==='POST'&&url.pathname==='/api/draft'){
