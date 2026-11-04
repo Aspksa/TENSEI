@@ -1,4 +1,4 @@
-param([switch]$PreflightOnly)
+param([switch]$PreflightOnly,[switch]$InstallOnly)
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Set-Location -LiteralPath $root
@@ -179,6 +179,10 @@ try {
   } else { '' }
   if ($previous -ne $markerValue -or -not (Assert-Dependencies $node)) {
     Install-Dependencies $node $npm $marker $markerValue
+  }
+  if ($InstallOnly) {
+    Write-Host 'TENSEI_INSTALL_OK'
+    exit 0
   }
   foreach ($entry in @('server.mjs','app.js','analytics.js','legion.js')) {
     & $node --check (Join-Path $root $entry)
