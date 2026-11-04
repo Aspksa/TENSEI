@@ -180,6 +180,11 @@ const server=http.createServer(async(req,res)=>{
         .map(key=>[key,url.searchParams.get(key)||'']));
       return send(res,200,analyzeTrips(dataset.trips,params,dataset.context));
     }
+    if(req.method==='GET'&&url.pathname==='/api/storage'){
+      return send(res,200,{dataDirectory:dataDir,
+        cloudSyncRisk:/(?:[\\/](?:OneDrive|Dropbox|Google Drive|iCloudDrive)(?:[\\/]|$))/i.test(dataDir),
+        scanStorage:'data/scans',reportStorage:'reports/Легион'});
+    }
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru});
