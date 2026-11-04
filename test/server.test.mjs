@@ -81,7 +81,7 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.equal(r.status,200);
     r=await fetch(url+'/api/approved-memory');assert.equal(r.status,200);
     assert.deepEqual((await r.json()).vehicles,['А123']);
-    r=await fetch(url+'/analytics');assert.equal(r.status,200);assert.match(await r.text(),/Аналитика перевозок/);
+    r=await fetch(url+'/analytics');assert.equal(r.status,200);assert.match(await r.text(),/Статистика перевозок/);
     r=await fetch(url+'/analytics.js');assert.equal(r.status,200);
     r=await fetch(url+'/api/photo-report/0123456789abcdef01234567');assert.equal(r.status,404);
 
