@@ -1,0 +1,79 @@
+.app-shell{display:grid;grid-template-columns:242px minmax(0,1fr);max-width:1580px;margin:0 auto;min-height:calc(100vh - 69px)}
+.side-menu{position:sticky;top:0;align-self:start;height:calc(100vh - 8px);min-height:390px;border-right:1px solid #dde6ee;background:#fff;padding:28px 15px;display:flex;flex-direction:column;gap:5px}
+.side-title{font-weight:750;letter-spacing:1.6px;font-size:10px;color:#8796a7;margin:2px 11px 14px}
+.side-link{text-align:left;border:1px solid transparent;background:transparent;border-radius:12px;color:#506377;display:flex;align-items:center;gap:13px;min-height:68px;padding:11px 12px;width:100%}
+.side-link:hover{background:#eff5fa;color:#214f7d}
+.side-link.active{background:#e9f2fb;color:#245d9b;border-color:#cae1f7;box-shadow:inset 3px 0 #3378b4}
+.side-icon{display:grid;place-items:center;flex-shrink:0;width:29px;height:33px;background:#eef2f6;border-radius:9px;color:#50789d;font-size:18px}
+.side-link.active .side-icon{background:#d5e9f9;color:#245d9b}
+.side-link strong{display:block;font-size:13px;font-weight:730}
+.side-link small{display:block;font-size:11px;font-weight:400;color:#8594a2;margin-top:3px}
+.side-bottom{margin-top:auto;border-top:1px solid #e4eaf0;padding:17px 10px;color:#7e8da0}
+.side-bottom span{display:block;font-size:10px;font-weight:760;letter-spacing:1.2px}
+.side-bottom small{display:block;font-size:11px;margin-top:8px;line-height:1.5}
+.app-shell>.container{margin:0;max-width:none;min-width:0;padding:29px 29px 60px}
+.workspace-page[hidden]{display:none!important}
+.legion-heading h1{letter-spacing:-.8px}
+.legion-badge{font-size:11px;color:#697a8f;border:1px solid #d9e4ef;border-radius:18px;background:white;padding:8px 12px;white-space:nowrap}
+.legion-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 18px}
+.legion-stats>div{background:#fff;border:1px solid #dfe7ef;border-radius:12px;padding:15px 18px;min-width:0}
+.legion-stats span{display:block;font-size:11px;color:#728299;line-height:1.5}
+.legion-stats strong{display:block;font-size:25px;letter-spacing:-.4px;margin-top:2px;color:#203850;font-variant-numeric:tabular-nums}
+.legion-columns{display:grid;grid-template-columns:minmax(0,1.36fr) minmax(300px,.73fr);gap:18px;align-items:start}
+.legion-main,.legion-aside{min-width:0;display:grid;gap:17px}
+.legion-card{padding:23px}
+.legion-card-header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.legion-card-header h2{font-size:17px;margin:0;color:#253b51}
+.legion-card-header p{color:#8090a0;font-size:12px;margin:2px 0 0}
+.legion-step{height:35px;width:35px;border-radius:12px;display:grid;place-items:center;background:#e8f1fa;color:#2b6295;font-size:12px;font-weight:770;flex-shrink:0}
+.legion-file-picker{display:flex;gap:14px;align-items:center;padding:19px 18px;border:1.5px dashed #9dbbd5;background:#f8fbff;border-radius:11px;cursor:pointer}
+.legion-file-picker:hover{background:#eff7ff;border-color:#3774a7}
+.legion-file-icon{font-size:27px;border-radius:10px;background:#e1eefb;color:#2f6da3;width:42px;height:42px;flex-shrink:0;display:grid;place-items:center}
+.legion-file-picker strong{display:block;font-size:14px;color:#234461}
+.legion-file-picker small{display:block;font-size:12px;color:#7a8d9d;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.legion-file-action{margin-left:auto;color:#225e95;font-size:12px;font-weight:670;white-space:nowrap}
+.legion-file-picker.compact{padding:11px 12px;gap:10px}
+.legion-file-picker.compact .legion-file-icon{height:34px;width:34px;font-size:22px}
+.legion-file-picker.compact strong{font-size:12px}
+.legion-file-picker.compact small{font-size:11px}
+.legion-check{display:flex;margin-top:12px;font-size:12px;color:#60748a}
+.legion-empty{padding:30px 20px;background:#f8fafc;border:1px dashed #d9e3ec;border-radius:10px;color:#8492a4;text-align:center;font-size:13px}
+.legion-table-scroll{border:1px solid #dbe4ed;border-radius:9px;overflow:auto}
+.legion-table-scroll table{width:100%;min-width:500px;border-collapse:collapse}
+.legion-table-scroll th{background:#eff5fa;font-size:11px;color:#61768b;text-align:left;padding:10px 9px}
+.legion-table-scroll td{padding:10px 9px;border-bottom:1px solid #e8eef3;font-size:12px}
+.legion-table-scroll td:last-child{font-weight:680;color:#1e536c}
+.legion-errors,.legion-unknown{border-radius:10px;margin-top:12px;padding:12px 14px;font-size:12px;line-height:1.55}
+.legion-errors{background:#fff1ef;border:1px solid #f0c1bc;color:#973f38}
+.legion-unknown{background:#fff8eb;border:1px solid #ead7b2;color:#82602b}
+.legion-unknown strong,.legion-errors strong{display:block;font-size:12px;margin-bottom:6px}
+.legion-unknown-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.legion-unknown-list button{border:1px solid #dfc69a;border-radius:7px;background:#fff;color:#67502e;font:650 11px "Segoe UI",sans-serif;padding:5px 8px}
+.legion-unknown-list button:hover{background:#fdf0d1}
+.legion-settings-inline{display:flex;flex-wrap:wrap;gap:16px;align-items:end;margin:16px 0 0}
+.legion-settings-inline .field{width:174px;font-size:11px}
+.legion-settings-inline .field input{width:100%;height:40px;border-radius:9px;border:1px solid #c0d0dd;padding:7px 10px}
+.legion-settings-inline>.inline-check{flex:1;min-width:190px;font-size:11px}
+#legionPreview .actions{margin-top:15px}
+.legion-workspace .help{line-height:1.55}
+.legion-subtitle{font-size:12px;font-weight:730;color:#46627e;margin:19px 0 11px}
+.legion-vehicle-form{display:grid;gap:10px}
+.legion-vehicle-form .field{font-size:11px}
+.legion-vehicle-form input{border:1px solid #c7d5e1;border-radius:9px;min-height:40px;padding:9px 12px}
+.legion-vehicle-form .button{white-space:normal;margin-top:5px}
+#legionBaseSearch{width:100%;border:1px solid #cad6e0;border-radius:9px;padding:10px 12px;font-size:12px}
+.legion-base-list{margin-top:12px;max-height:385px;overflow-y:auto;display:grid;gap:6px}
+.legion-base-entry{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #edf0f3;background:#f8fafc;border-radius:8px;cursor:pointer;text-align:left;width:100%;color:#273f56}
+.legion-base-entry:hover{background:#eaf3fb;border-color:#c8d9e9}
+.legion-base-entry strong{white-space:nowrap;font-size:12px;min-width:68px}
+.legion-base-entry span{display:block;min-width:0;font-size:11px;overflow:hidden;text-overflow:ellipsis;color:#617586}
+.legion-base-entry small{display:block;font-size:10px;color:#93a0ac}
+.legion-history{display:grid;gap:10px;margin-top:13px}
+.legion-report-entry{display:flex;gap:14px;justify-content:space-between;align-items:center;padding:13px;border:1px solid #e4eaf0;border-radius:9px;background:#f9fbfd}
+.legion-report-entry strong{display:block;font-size:12px;overflow-wrap:anywhere}
+.legion-report-entry small{display:block;color:#8997a5;font-size:11px;margin-top:4px}
+.legion-report-entry button{flex-shrink:0}
+.legion-workspace footer{line-height:1.6}
+@media(max-width:1200px){.legion-columns{grid-template-columns:minmax(0,1fr) minmax(280px,.72fr)}.legion-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:920px){.app-shell{grid-template-columns:1fr}.side-menu{position:relative;top:auto;height:auto;min-height:0;padding:10px 14px;display:flex;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid #e4ebf2;gap:8px}.side-title,.side-bottom{display:none}.side-link{width:auto;flex:1;min-width:0;padding:9px 10px;min-height:54px}.side-link small{font-size:10px}.app-shell>.container{padding:21px 15px 40px}.legion-columns{grid-template-columns:1fr}.legion-aside{order:-1}}
+@media(max-width:600px){.side-link{gap:7px}.side-link strong{font-size:11px}.side-link small{font-size:9px}.side-icon{width:25px;height:30px;font-size:15px}.legion-stats{gap:7px}.legion-stats>div{padding:12px}.legion-stats strong{font-size:21px}.legion-card{padding:16px}.legion-file-picker{padding:13px}.legion-file-action{display:none}.legion-badge{white-space:normal}.legion-report-entry{align-items:flex-start;flex-direction:column}.legion-report-entry button{width:100%}}
