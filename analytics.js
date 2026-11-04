@@ -1,6 +1,10 @@
 const $=id=>document.getElementById(id),num=n=>Number(n||0).toLocaleString('ru-RU',{maximumFractionDigits:2}),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let rows=[],tasks=[];
-async function load(){try{const [d,t,m]=await Promise.all([fetch('/api/draft').then(r=>r.json()),fetch('/api/tasks').then(r=>r.json()),fetch('/api/ai-monitor').then(r=>r.json())]);rows=d.rows||[];tasks=t.tasks||[];populate();draw();drawMonitor(m);$('state').textContent='Загружено '+rows.length+' записей';}catch(e){$('state').textContent='Ошибка: '+e.message}}
+async function load(){try{const [d,t,m,g]=await Promise.all([fetch('/api/draft').then(r=>r.json()),fetch('/api/tasks').then(r=>r.json()),fetch('/api/ai-monitor').then(r=>r.json()),fetch('/api/photo-groups').then(r=>r.json())]);rows=d.rows||[];tasks=t.tasks||[];populate();draw();drawMonitor(m);drawPhotoGroups(g);$('state').textContent='Загружено '+rows.length+' записей';}catch(e){$('state').textContent='Ошибка: '+e.message}}
+function drawPhotoGroups(data){
+  const items=(data.groups||[]).slice(0,40);
+  $('photoGroups').innerHTML=items.length?items.map(g=>'<p><strong>'+esc(g.groupKey==='undated'?'Без даты':g.groupKey)+'</strong> · '+num(g.files)+' фото · '+num(g.rows)+' строк</p>').join(''):'<p class="hint">Обработанных фотографий пока нет.</p>';
+}
 function drawMonitor(data){
   const metrics=[
     ['Обработано фото',num(data.photos)],
