@@ -6,6 +6,10 @@ OCR model after each call to minimize laptop idle memory use. Coordinates and
 text are advisory; handwritten numbers are never automatically verified.
 """
 import base64
+import hashlib
+import tempfile
+from pathlib import Path
+from cell_cache import cache_root
 import gc
 import importlib.util
 import io
@@ -73,14 +77,57 @@ def normalize_output(result, width, height):
             "recognized_cells": [], "verified": False, "localOnly": True}
 
 
+def _cache_path(binary):
+    digest = hashlib.sha256(b"rapidocr-onnx-cpu-v1\\0" + binary).hexdigest()
+    return cache_root() / "rapidocr" / (digest + ".json")
+
+
+def read_result(binary):
+    try:
+        data = json.loads(_cache_path(binary).read_text(encoding="utf-8"))
+        if data.get("engine") != "RapidOCR CPU ONNX" or data.get("verified") is not False:
+            return None
+        if not isinstance(data.get("lines"), list):
+            return None
+        return {"engine": data["engine"], "lines": data["lines"][:250],
+                "recognized_cells": [], "verified": False, "localOnly": True, "cached": True}
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def write_result(binary, output):
+    path = _cache_path(binary)
+    tmp = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", dir=path.parent, encoding="utf-8",
+                                         suffix=".tmp", delete=False) as fh:
+            tmp = fh.name
+            json.dump({**output, "verified": False}, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+        entries = sorted(path.parent.glob("*.json"), key=lambda p: p.stat().st_mtime)
+        for stale in entries[:max(0, len(entries) - 500)]:
+            stale.unlink(missing_ok=True)
+    except OSError:
+        pass
+    finally:
+        if tmp:
+            Path(tmp).unlink(missing_ok=True)
+
+
 def run_ocr(binary, width, height):
     global _engine
     from rapidocr import RapidOCR
+    saved = read_result(binary)
+    if saved is not None:
+        return saved
     try:
         if _engine is None:
             _engine = RapidOCR()
         result = _engine(binary)
-        return normalize_output(result, width, height)
+        output = normalize_output(result, width, height)
+        write_result(binary, output)
+        return {**output, 'cached': False}
     finally:
         if not KEEP_WARM:
             _engine = None
