@@ -324,8 +324,11 @@ function drawQueue(){
   }
   $('queuedCount').textContent=state.queue.length?'('+state.queue.length+')':'';
   $('recognize').disabled=state.busy||state.queue.length===0;
-  $('recognize').textContent=state.busy?'Идёт распознавание…':
-    state.queue.length?'Обработать '+state.queue.length+' фото через Cloud.ru':'Обработать фото через Cloud.ru';
+  // Preserve the nested queuedCount span. Setting button.textContent
+  // would remove it and crash the next file-upload event.
+  const label=$('recognizeLabel');
+  label.textContent=state.busy?'Идёт распознавание…':
+    state.queue.length?'Обработать фото через Cloud.ru':'Обработать фото через Cloud.ru';
   $('clearQueue').disabled=state.busy||state.queue.length===0;
   $('autoRecognize').disabled=state.busy;
 }
