@@ -214,6 +214,7 @@ $('settingsForm').addEventListener('submit',async event=>{
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
       paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked,
       localText:$('localText').checked,localVl:$('localVl').checked,cvPreprocess:$('cvPreprocess').checked,
+      gridSegmentation:$('gridSegmentation').checked,
       costMode:$('costMode').value,maxCloudCalls:Number($('maxCloudCalls').value)
     });
     state.hasKey=result.hasKey;
@@ -256,7 +257,41 @@ function drawQueue(){
   $('recognize').disabled=state.busy||state.queue.length===0;
   $('clearQueue').disabled=state.busy||state.queue.length===0;
 }
+let gridBoxes=[];
+function drawPreviewGrid(boxes=gridBoxes){
+  const layer=$('gridOverlay'),img=$('previewImage');
+  layer.replaceChildren();
+  if(!img.naturalWidth||!img.naturalHeight||img.hidden)return;
+  const area=$('previewSurface');
+  const scale=Math.min(area.clientWidth/img.naturalWidth,area.clientHeight/img.naturalHeight);
+  const dx=(area.clientWidth-img.naturalWidth*scale)/2;
+  const dy=(area.clientHeight-img.naturalHeight*scale)/2;
+  for(const b of boxes.slice(0,700)){
+    if(!Array.isArray(b)||b.length!==4||b.some(v=>typeof v!=='number'||!Number.isFinite(v)||v<0||v>1)||b[2]<=b[0]||b[3]<=b[1])continue;
+    const el=document.createElement('div');el.className='grid-cell';
+    Object.assign(el.style,{left:(dx+b[0]*img.naturalWidth*scale)+'px',
+      top:(dy+b[1]*img.naturalHeight*scale)+'px',
+      width:((b[2]-b[0])*img.naturalWidth*scale)+'px',
+      height:((b[3]-b[1])*img.naturalHeight*scale)+'px'});
+    layer.append(el);
+  }
+}
+$('detectGrid').onclick=async()=>{
+  if(state.busy||!state.queue.length)return status('Выберите фотографию в очереди.','info');
+  const file=state.queue[0],button=$('detectGrid');
+  button.disabled=true;
+  try{
+    const result=await api('layout',{image:await fileData(file)});
+    gridBoxes=Array.isArray(result.cells)?result.cells:[];
+    drawPreviewGrid();
+    $('qualityStatus').textContent=gridBoxes.length
+      ?'Локально обнаружено '+gridBoxes.length+' ячеек, '+(result.rows?.length||0)+' строк. Сверьте сетку визуально.'
+      :'Локально сетка не обнаружена: попробуйте PP-StructureV3 или другое фото.';
+  }catch(e){status('Локальное выделение недоступно: '+e.message+'. Проверьте запуск Paddle-сервиса и OpenCV.','error')}
+  finally{button.disabled=false}
+};
 function showPreview(file){
+  gridBoxes=[];$('gridOverlay').replaceChildren();
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
   const img=$('previewImage');img.hidden=true;$('previewEmpty').hidden=false;
@@ -275,7 +310,7 @@ function showPreview(file){
         'Качество: '+result.quality.width+' × '+result.quality.height+
         ' пикселей; явных проблем не обнаружено.';
     }).catch(e=>{if(state.previewUrl===ticket)$('qualityStatus').textContent='Проверка качества не удалась: '+e.message});
-  img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true};
+  img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true;drawPreviewGrid()};
   img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;$('previewEmpty').textContent='Предпросмотр этого формата недоступен'};
   img.src=state.previewUrl;
 }
@@ -452,6 +487,7 @@ $('saveTemplate').onclick=async()=>{
   finally{button.disabled=false}
 };
 function showSource(row){
+  gridBoxes=[];$('gridOverlay').replaceChildren();
   if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';return}
   const src='/api/source/'+row.sourceId;
   const img=$('previewImage'),overlay=$('highlightBox');
@@ -475,6 +511,7 @@ function showSource(row){
       height:((y2-y1)*img.naturalHeight*scale)+'px'
     });
     overlay.hidden=false;
+    drawPreviewGrid();
   };
   img.onload=update;img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;overlay.hidden=true};
   if(img.getAttribute('src')!==src)img.src=src;
@@ -511,6 +548,7 @@ async function initialize(){
     $('localText').checked=cfg.localText===true;
     $('localVl').checked=cfg.localVl===true;
     $('cvPreprocess').checked=cfg.cvPreprocess===true;
+    $('gridSegmentation').checked=cfg.gridSegmentation===true;
     $('costMode').value=cfg.costMode||'off';
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
