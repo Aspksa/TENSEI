@@ -40,7 +40,7 @@ test('left menu works; vehicle can be saved; CSV preview renders without a new p
     dom.window.HTMLElement.prototype.scrollIntoView=function(){};
     await import('../legion.js?test-navigation');
     const $=id=>dom.window.document.getElementById(id);
-    await until(()=>$('legionBaseStatus').textContent.includes('0 автомобилей'));
+    await until(()=>$('legionBaseStatus').textContent.includes('База ТС пока пустая'));
     assert.equal($('photoWorkspace').hidden,false);
     $('navLegion').click();
     assert.equal($('photoWorkspace').hidden,true);

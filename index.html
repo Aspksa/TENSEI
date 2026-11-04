@@ -7,8 +7,12 @@
   <title>TENSEI — распознавание журналов</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/legion.css">
+  <link rel="stylesheet" href="/analytics.css">
+  <link rel="stylesheet" href="/scans.css">
   <script type="module" src="/app.js"></script>
   <script type="module" src="/legion.js"></script>
+  <script type="module" src="/analytics.js"></script>
+  <script type="module" src="/scans.js"></script>
 </head>
 <body>
   <div class="app">
@@ -34,6 +38,12 @@
       <button id="navLegion" type="button" class="side-link">
         <span class="side-icon" aria-hidden="true">▤</span>
         <span><strong>Легион · отчёты</strong><small>CSV карьера → XLSX</small></span>
+      </button>
+      <button id="navAnalytics" type="button" class="side-link">
+        <span class="side-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="23" height="23" aria-hidden="true"><path d="M3 19.5h18M5 16l5-5 4 3 6-8"/><circle cx="5" cy="16" r="1.5"/><circle cx="10" cy="11" r="1.5"/><circle cx="14" cy="14" r="1.5"/><circle cx="20" cy="6" r="1.5"/></svg>
+        </span>
+        <span><strong>Статистика</strong><small>12 графиков · Аналитика</small></span>
       </button>
       <div class="side-bottom"><span>ЛОКАЛЬНО</span><small>Проверка данных · Excel · архив отчётов</small></div>
     </aside>
@@ -89,7 +99,8 @@
 <label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
 <label class="inline-check"><input id="mineru" type="checkbox"> MinerU Tasks 4.1 — отдельная задача разбора фото (требуется локальный MinerU, дополнительная нагрузка)</label>
 </div></details>
-<p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
+<p id="storageWarning" class="storage-warning" hidden></p>
+                <p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
                 <div id="connectionDetails" class="diagnostic" role="status" aria-live="polite" hidden></div>
               </form>
             </div>
@@ -119,7 +130,38 @@
                 <button id="recognize" class="button button-primary" type="button">Распознать <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
-              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
+              <div class="scan-console" id="scanConsole" hidden aria-live="polite">
+                <div class="scan-console-head">
+                  <div class="scan-vector" aria-hidden="true">
+                    <svg viewBox="0 0 96 96" width="90" height="90">
+                      <circle class="scan-ring-track" cx="48" cy="48" r="37" fill="none" stroke="#dcecf4" stroke-width="5"/>
+                      <circle class="scan-ring-progress" id="scanRing" cx="48" cy="48" r="37" fill="none"
+                        stroke="#138d95" stroke-width="5" stroke-linecap="round" transform="rotate(-90 48 48)"
+                        stroke-dasharray="232.5" stroke-dashoffset="232.5"/>
+                      <g fill="none" stroke="#37647e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M35 29h20l7 7v31H35V29Z"/>
+                        <path d="M54 29v9h9M41 47h15M41 53h12M41 59h15"/>
+                        <path d="M40 34h5"/>
+                      </g>
+                      <path class="scan-beam" d="M24 18L72 78" stroke="#22b4a0" stroke-width="2" stroke-linecap="round" opacity=".65"/>
+                    </svg>
+                  </div>
+                  <div class="scan-console-info">
+                    <span class="scan-console-eyebrow">СТАТУС РАСПОЗНАВАНИЯ</span>
+                    <strong id="scanStage">Ожидает запуска</strong>
+                    <span id="scanElapsed">00:00 · Скан сохранён локально</span>
+                    <p id="scanStateHint">TENSEI сообщает, на каком этапе находится обработка. Ожидание Cloud.ru не означает зависание.</p>
+                  </div>
+                </div>
+                <div class="scan-stages" id="scanStages">
+                  <span data-phase="queued">01 · Сохранение</span>
+                  <span data-phase="prepare">02 · Подготовка</span>
+                  <span data-phase="cloud">03 · Cloud.ru</span>
+                  <span data-phase="crop">04 · Фрагменты</span>
+                  <span data-phase="complete">05 · Таблица</span>
+                </div>
+              </div><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
@@ -131,10 +173,23 @@
           </div>
         </section>
       </div>
+      <section class="scan-library card" id="scanLibrary">
+        <div class="scan-library-heading">
+          <div class="scan-library-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="29" height="29" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="5" y="7" width="20" height="19" rx="4"/><path d="M10 7V4h18v19h-3M11 20l4-5 4 3 4-6M11 23h9"/>
+            </svg>
+          </div>
+          <div><h2>Библиотека сканов <span class="scan-count" id="scanArchiveCount">0</span></h2>
+            <p>Каждое фото сохраняется отдельно на компьютере, даже если распознавание закончилось ошибкой.</p></div>
+          <button type="button" id="refreshScans" class="button button-outline">Обновить</button>
+        </div>
+        <div id="scanGallery" class="scan-gallery" aria-live="polite"><p class="help">Загружаю локальную библиотеку…</p></div>
+      </section>
       <section class="card card-result" id="results">
         <div class="card-heading result-heading static-heading">
           <span class="step">3</span>
-          <span class="card-heading-text"><strong>Результат распознавания</strong><small>Исправляйте данные перед выгрузкой</small></span>
+          <span class="card-heading-text"><strong>Результат распознавания</strong><small id="activeScanLabel">Ручная таблица. Сохранённые фотографии — в библиотеке выше.</small></span>
           <div class="actions result-actions">
             <button id="addRow" type="button" class="button button-outline">+ Строка</button>
             <button id="download" type="button" class="button button-primary">Скачать Excel</button>
@@ -161,7 +216,7 @@
         </div>
         <div class="result-footer">
           <span id="tableCount">0 записей</span>
-          <button id="clearData" class="button button-danger" type="button">Очистить таблицу</button>
+          <button id="clearData" class="button button-danger" type="button" title="Очищает текущую рабочую таблицу, но не удаляет фото и сохранённые распознанные записи из библиотеки">Очистить текущий вид</button>
         </div>
       </section>
       <details id="comparisonDetails" class="audit card" hidden><summary>Дополнительное чтение Chandra OCR 2</summary><p class="help">Результат Chandra нужно сопоставлять с фотографией вручную.</p><pre id="comparisonText" class="comparison-raw"></pre></details><details id="auditDetails" class="audit card">
@@ -183,6 +238,7 @@
         <div><span>Товаров</span><strong id="legionStatProducts">0</strong></div>
         <div><span>Машин без полных данных</span><strong id="legionStatUnknown">0</strong></div>
       </div>
+      <p id="legionZeroInfo" class="legion-zero-help">Пока в этом разделе 0 рейсов, потому что CSV ещё не выбран. Сначала импортируйте мастер-файл «База ТС», затем нажмите «Выбрать CSV-файл».</p>
       <div class="legion-columns">
         <div class="legion-main">
           <article class="card legion-card">
@@ -259,6 +315,103 @@
         </div>
       </div>
       <footer>Тонно-километры в этой автоматизации рассчитываются по указанной формуле «тонны / 1,55». Обычные физические т·км рассчитывают умножением.</footer>
+    </section>
+    <section class="workspace-page analytics-workspace" id="analyticsWorkspace" hidden>
+      <div class="analytics-heading">
+        <div><div class="eyebrow">TENSEI / АНАЛИТИКА</div>
+          <h1>Статистика перевозок</h1>
+          <p>Достоверные показатели из импортированных CSV и библиотеки сканов. Каждый график можно исследовать.</p>
+        </div>
+        <svg class="analytics-hero-art" viewBox="0 0 242 92" role="img" aria-label="Декоративная векторная диаграмма">
+          <defs><linearGradient id="hero-a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#226397"/><stop offset="1" stop-color="#2CB9A0"/></linearGradient></defs>
+          <rect x="4" y="4" width="234" height="84" rx="16" fill="#e9f4fa"/>
+          <path d="M16 65L46 46L75 59L104 24L130 39L157 17L186 30L224 12" fill="none" stroke="url(#hero-a)" stroke-linecap="round" stroke-linejoin="round" stroke-width="4"/>
+          <path d="M16 65L46 46L75 59L104 24L130 39L157 17L186 30L224 12L224 79L16 79Z" fill="#18ad9d" opacity=".12"/>
+          <circle cx="104" cy="24" r="5" fill="#fff" stroke="#238a9a" stroke-width="2"/>
+          <circle cx="186" cy="30" r="5" fill="#fff" stroke="#238a9a" stroke-width="2"/>
+        </svg>
+      </div>
+      <div class="analytics-toolbar card">
+        <label>От <input type="date" id="analyticsFrom" title="Начало периода перевозок. Пустое поле — все доступные даты."></label>
+        <label>До <input type="date" id="analyticsTo" title="Конец периода перевозок включительно."></label>
+        <label>Товар <select id="analyticsProduct"><option value="">Все товары</option></select></label>
+        <label>Группировка <select id="analyticsPeriod"><option value="day">По дням</option><option value="week">По неделям</option><option value="month">По месяцам</option></select></label>
+        <label>Показатель <select id="analyticsMetric"><option value="tonnes">Тонны</option><option value="trips">Рейсы</option></select></label>
+        <button class="button button-outline" id="analyticsRefresh" type="button">Обновить</button>
+        <details class="analytics-compare"><summary>Сравнить с другим периодом</summary>
+          <div class="analytics-compare-body"><label>С <input type="date" id="analyticsCompareFrom"></label>
+          <label>По <input type="date" id="analyticsCompareTo"></label>
+          <button type="button" id="analyticsCompareReset" class="button button-ghost">Сбросить</button></div>
+        </details>
+      </div>
+      <div id="analyticsNotice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div class="analytics-kpis">
+        <div><span>Грузооборот (нетто) <span title="Сумма весов нетто из CSV в выбранном периоде." aria-label="Подсказка: сумма весов нетто">ⓘ</span></span><strong id="akTonnes">—</strong><small>тонн</small></div>
+        <div><span>Выполнено рейсов <span title="Каждая строка CSV — отдельный рейс, даже если машина повторяется.">ⓘ</span></span><strong id="akTrips">—</strong><small>записей</small></div>
+        <div><span>Активных машин</span><strong id="akVehicles">—</strong><small>уникальных госномеров</small></div>
+        <div><span>Средний груз на рейс</span><strong id="akAvg">—</strong><small>тонн</small></div>
+        <div><span>Строк на проверку</span><strong id="akIssues">—</strong><small>аномалии и база ТС</small></div>
+      </div>
+      <p id="analyticsSource" class="analytics-source">Загружаю данные только из локальных CSV…</p>
+      <div class="analytics-grid">
+        <article class="analytics-panel card span-2">
+          <header><div class="analytics-number">01</div><div><h2>Динамика перевозок</h2><p>Тонны или рейсы по дням, неделям и месяцам · сравнение двух периодов</p></div>
+            <span title="Источник: даты и нетто каждого рейса в импортированных CSV. Сравнение отображает отдельную линию второго периода." class="analytic-help">ⓘ</span></header>
+          <div class="vector-chart large" id="chartTrend"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">02</div><div><h2>ТОП-10 автомобилей</h2><p>Нажмите на машину, чтобы открыть рейсы</p></div><span title="Группировка по нормализованному госномеру; все рейсы сохраняются." class="analytic-help">ⓘ</span></header>
+          <div class="panel-controls"><select id="analyticsVehicleMetric" aria-label="Сортировка автомобилей"><option value="tonnes">По тоннам</option><option value="trips">По рейсам</option><option value="avgTonnes">Средний вес</option></select></div>
+          <div class="vector-chart" id="chartVehicles"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">03</div><div><h2>Распределение товаров</h2><p>Доли тонн по каждому товару</p></div><span class="analytic-help" title="Товары берутся из поля «Товар» CSV. «Скала» и «СКАЛА +» не смешиваются.">ⓘ</span></header>
+          <div class="vector-chart" id="chartProducts"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">04</div><div><h2>Календарь активности</h2><p>Чем насыщеннее цвет, тем больше перевозок</p></div><span class="analytic-help" title="Нажмите на дату, чтобы показать соответствующие рейсы из CSV.">ⓘ</span></header>
+          <label class="cal-select">Месяц <input id="analyticsMonth" type="month"></label>
+          <div class="vector-chart" id="chartCalendar"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">05</div><div><h2>Загрузка автопарка</h2><p>Самые активные и редко используемые машины</p></div><span class="analytic-help" title="Используются рейсы и вес нетто за выбранный период, а не часы двигателя.">ⓘ</span></header>
+          <div class="vector-chart" id="chartFleet"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">06</div><div><h2>Перевозки по часам</h2><p>Время из CSV · часы пик</p></div><span class="analytic-help" title="Если в CSV нет времени, график честно сообщит, что данных недостаточно.">ⓘ</span></header>
+          <div class="vector-chart" id="chartHours"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">07</div><div><h2>Ошибки и аномалии</h2><p>Нет авто в базе, водитель, превышение веса, арифметика</p></div><span class="analytic-help" title="Проблемы из проверки веса и базы ТС. Нажмите категорию, чтобы увидеть записи; исправление выполняется в «Легион».">ⓘ</span></header>
+          <div class="vector-chart" id="chartAnomalies"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">08</div><div><h2>Распределение веса</h2><p>Гистограмма тонн нетто за рейс · редкие отклонения</p></div><span class="analytic-help" title="Гистограмма по диапазонам веса. Выбросы определяются правилом 1,5 × межквартильный размах, только при восьми и более рейсах.">ⓘ</span></header>
+          <div class="vector-chart" id="chartWeights"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">09</div><div><h2>Накопленный тоннаж</h2><p>Как увеличивается результат с начала периода</p></div><span class="analytic-help" title="Накопленная сумма тонн по календарным дням с ненулевой активностью.">ⓘ</span></header>
+          <div class="vector-chart" id="chartCumulative"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">10</div><div><h2>Дни недели</h2><p>Какие дни дают наибольшую нагрузку</p></div><span class="analytic-help" title="Суммарный тоннаж или количество рейсов по понедельникам, вторникам и т. д. в выбранном периоде.">ⓘ</span></header>
+          <div class="vector-chart" id="chartWeekdays"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">11</div><div><h2>Качество данных</h2><p>Заполненность времени, исправность базы ТС, пропуски CSV</p></div><span class="analytic-help" title="Не все исходные CSV содержат время. Показатели качества учитывают только реально доступные поля.">ⓘ</span></header>
+          <div class="vector-chart" id="chartDataQuality"></div>
+        </article>
+        <article class="analytics-panel card">
+          <header><div class="analytics-number">12</div><div><h2>Библиотека сканов</h2><p>Успешные, ошибочные и сохранённые фотографии</p></div><span class="analytic-help" title="Статусы локальных сканов, не тоннаж CSV. Фото могут иметь ошибки OCR и при этом храниться в архиве.">ⓘ</span></header>
+          <div class="vector-chart" id="chartScanHealth"></div>
+        </article>
+      </div>
+      <section class="analytics-panel card analytics-details" id="analyticsDetailPanel" hidden>
+        <header><div><h2 id="analyticsDetailTitle">Рейсы</h2><p>Детализация по строкам импортированных CSV</p></div>
+          <button class="button button-ghost" type="button" id="analyticsHideDetails">Закрыть ×</button></header>
+        <div class="analytics-detail-scroll"><table><thead><tr><th>Дата</th><th>Время</th><th>Номер ТС</th><th>Товар</th><th>Нетто, кг</th><th>Проверка</th></tr></thead><tbody id="analyticsDetailRows"></tbody></table></div>
+      </section>
+      <footer>Источники: локальная история CSV из «Легион · отчёты» и библиотека сканов. Повторный импорт одного и того же CSV учитывается только один раз. Значения без исходных данных не выдумываются.</footer>
     </section>
     </main>
   </div>
