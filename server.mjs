@@ -224,30 +224,55 @@ async function excel(raw){
 async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
   catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
 async function readFleetImports(){
+  const warnings=[],out=[],limit=50000;
   const indexPath=path.join(dataDir,'legion','imports-index.json');
-  let index;try{index=JSON.parse(await fs.readFile(indexPath,'utf8'))}
-  catch(e){if(e.code==='ENOENT')return [];throw Error('Не удалось открыть историю CSV «Легиона»')}
-  if(!Array.isArray(index))throw Error('История импортов CSV повреждена');
-  const out=[];let count=0;
-  for(const entry of index.slice(0,50)){
-    if(!/^[0-9a-f-]{36}$/i.test(String(entry.id||'')))continue;
-    const file=path.join(dataDir,'legion','imports',entry.id+'.json');
-    let data;try{data=JSON.parse(await fs.readFile(file,'utf8'))}
-    catch(e){if(e.code==='ENOENT')continue;throw Error('Ошибка чтения CSV '+entry.id)}
-    if(!Array.isArray(data.rows))continue;
-    count+=data.rows.length;
-    if(count>50000)throw Error('История превышает 50 000 рейсов. Выберите меньший архив для анализа.');
-    out.push({id:entry.id,importedAt:String(entry.importedAt||''),rows:data.rows});
+  let index=[];
+  try{index=JSON.parse(await fs.readFile(indexPath,'utf8'))}
+  catch(e){if(e.code!=='ENOENT')warnings.push('Не удалось прочитать индекс CSV: '+e.message)}
+  if(!Array.isArray(index)){
+    warnings.push('Индекс импортов CSV повреждён; используйте резервную копию');
+    index=[];
   }
-  return out;
+  let count=0;
+  for(const entry of index.slice(0,50)){
+    if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
+    const file=path.join(dataDir,'legion','imports',entry.id+'.json');
+    let data;
+    try{data=JSON.parse(await fs.readFile(file,'utf8'))}
+    catch(e){warnings.push('Пропущен недоступный импорт '+entry.id);continue}
+    if(!Array.isArray(data?.rows)){warnings.push('Пропущен повреждённый импорт '+entry.id);continue}
+    const remaining=limit-count;
+    if(remaining===0){
+      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      break;
+    }
+    const rows=data.rows.slice(0,remaining);
+    out.push({id:entry.id,importedAt:String(entry.importedAt||''),rows});
+    count+=rows.length;
+    if(rows.length<data.rows.length){
+      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      break;
+    }
+  }
+  return {imports:out,warnings};
 }
 async function fleetData(){
-  const [draft,imports,vehicles]=await Promise.all([
-    getDraft(),readFleetImports(),
+  const [draftRead,history,vehicleRead]=await Promise.all([
+    getDraft().then(value=>({value,error:null})).catch(e=>({value:{rows:[]},
+      error:'Черновик фотографий не читается: '+e.message})),
+    readFleetImports(),
     fs.readFile(path.join(dataDir,'legion','vehicles.json'),'utf8')
-      .then(s=>JSON.parse(s)).catch(e=>{if(e.code==='ENOENT')return [];throw e})
+      .then(s=>({value:JSON.parse(s),error:null})).catch(e=>({
+        value:[],error:e.code==='ENOENT'?null:'Не удалось прочитать справочник ТС'
+      }))
   ]);
-  return unifyFleet({imports,photoRows:draft.rows,vehicles:Array.isArray(vehicles)?vehicles:[]});
+  const warnings=[...history.warnings];
+  if(draftRead.error)warnings.push(draftRead.error);
+  if(vehicleRead.error)warnings.push(vehicleRead.error);
+  const result=unifyFleet({imports:history.imports,photoRows:draftRead.value.rows,
+    vehicles:Array.isArray(vehicleRead.value)?vehicleRead.value:[]});
+  const partial=history.warnings.length>0||Boolean(draftRead.error);
+  return {...result,warnings,partial};
 }
 function fleetOptions(url){
   const vehicle=String(url.searchParams.get('vehicle')||'all').slice(0,50);
@@ -272,7 +297,8 @@ const server=http.createServer(async(req,res)=>{
       '/legion.css':['legion.css','text/css; charset=utf-8'],
       '/analytics':['analytics.html','text/html; charset=utf-8'],
       '/analytics.js':['analytics.js','text/javascript; charset=utf-8'],
-      '/analytics.css':['analytics.css','text/css; charset=utf-8']};
+      '/analytics.css':['analytics.css','text/css; charset=utf-8'],
+      '/design-system.css':['design-system.css','text/css; charset=utf-8']};
     if(req.method==='GET'&&staticFiles[url.pathname]){
       const [filename,type]=staticFiles[url.pathname];
       res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});
@@ -444,7 +470,7 @@ const server=http.createServer(async(req,res)=>{
         products:filtered.products,daily:filtered.daily,hours:filtered.hours,
         trips:filtered.rows.slice(0,2000),review:data.review.slice(0,200),
         audit:data.totals,sourcePolicy:data.sourcePolicy,note:data.note,
-        verified:false,filters:options,catalog:{vehicles:data.vehicles.map(v=>v.plate),
+        verified:false,filters:options,warnings:data.warnings,partial:data.partial,catalog:{vehicles:data.vehicles.map(v=>v.plate),
           products:data.products.map(p=>p.name)},tripsTruncated:filtered.rows.length>2000});
     }
     if(req.method==='GET'&&url.pathname==='/api/fleet/export'){
@@ -463,6 +489,31 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='GET'&&url.pathname==='/api/diagnostics'){
+      const checks={},warnings=[];
+      const cfg=await settings();
+      checks.cloudKeyConfigured=Boolean(cfg.key);
+      if(!cfg.key)warnings.push('Не указан API-ключ Cloud.ru: фотография попадёт в очередь, но облачное распознавание не начнётся');
+      try{const d=await getDraft();checks.savedPhotoRows=d.rows.length}
+      catch(e){checks.savedPhotoRows=null;warnings.push('Черновик не читается: '+e.message)}
+      try{const t=await tasks();checks.photoTasks=t.length;
+        checks.lastTask=t[0]?{status:t[0].status,phase:t[0].phase||'',
+          error:String(t[0].error||'').slice(0,150)}:null}
+      catch(e){checks.photoTasks=null;warnings.push('История фото не читается: '+e.message)}
+      try{const imports=JSON.parse(await fs.readFile(path.join(dataDir,'legion','imports-index.json'),'utf8'));
+        checks.legionImports=Array.isArray(imports)?imports.length:0;
+        if(!Array.isArray(imports))warnings.push('Список импортов «Легиона» повреждён')}
+      catch(e){checks.legionImports=0;
+        if(e.code!=='ENOENT')warnings.push('Список CSV-импортов не читается')}
+      const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
+      checks.rapidOCR=rapid.available?'ready':'optional-offline';
+      checks.pythonRequired=false;
+      checks.excelRequiresCloud=false;
+      checks.statisticsRequiresCloud=false;
+      return send(res,200,{ok:true,checks,warnings,
+        explanation:'Проверка локальная и не расходует токены Cloud.ru. Настоящее соединение проверяется отдельно в настройках.',
+        version:'TENSEI 0.5 · stability update'});
+    }
     if(req.method==='GET'&&url.pathname==='/api/ocr-health'){
       const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
       return send(res,200,{rapid,localOnly:true,cloudCalls:0});

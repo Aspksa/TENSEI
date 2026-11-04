@@ -7,6 +7,7 @@
   <title>TENSEI — распознавание журналов</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/legion.css">
+  <link rel="stylesheet" href="/design-system.css">
   <script type="module" src="/app.js"></script>
   <script type="module" src="/legion.js"></script>
 </head>
@@ -28,7 +29,7 @@
     <aside class="side-menu" aria-label="Меню TENSEI">
       <div class="side-title">РАЗДЕЛЫ</div>
       <button id="navPhoto" type="button" class="side-link active" aria-current="page">
-        <span class="side-icon" aria-hidden="true">⌂</span><span><strong>Главная</strong><small>Загрузка и статусы фото</small></span>
+        <span class="side-icon" aria-hidden="true">⌂</span><span><strong>Фото и OCR</strong><small>Загрузка и распознавание</small></span>
       </button>
       <a class="side-link" href="#results" id="navReview"><span class="side-icon" aria-hidden="true">✓</span><span><strong>Проверка и реестр</strong><small>Цифры, машины, Excel</small></span></a>
       <a class="side-link" href="/analytics"><span class="side-icon" aria-hidden="true">▥</span><span><strong>Аналитика</strong><small>Рейсы, тоннаж, расходы ИИ</small></span></a>
@@ -41,8 +42,8 @@
     <section id="photoWorkspace" class="workspace-page">
       <div class="heading">
         <div>
-          <div class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-          <h1>Распознавание рукописных журналов</h1>
+          <div class="eyebrow">TENSEI / ДОКУМЕНТЫ</div>
+          <h1>Распознавание фотографий</h1>
           <p>Загрузите фотографии, проверьте результат и сохраните Excel.</p>
         </div>
         <span class="local"><span aria-hidden="true">●</span> Черновик — на этом компьютере</span>
@@ -69,17 +70,26 @@
               </div>
               <input id="photoFiles" type="file" accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg" hidden multiple>
               <div class="queue" id="fileQueue" aria-live="polite"></div>
+              <div id="uploadFeedback" class="upload-feedback" role="status" aria-live="polite">Добавьте фото — здесь появятся имя файла, следующий шаг и результат проверки.</div>
+              <details class="system-diagnostics"><summary>Не запускается? Проверить состояние TENSEI</summary>
+                <p class="help">Локальная проверка конфигурации. API-ключ и фотографии не отправляются.</p>
+                <button type="button" class="button button-outline" id="runDiagnostics">Проверить систему</button>
+                <div id="diagnosticsResults" role="status" aria-live="polite"></div>
+              </details>
               <div class="actions upload-actions">
-                <button id="recognize" class="button button-primary" type="button">Обработать автоматически <span id="queuedCount"></span></button>
+                <button id="recognize" class="button button-primary" type="button"><span id="recognizeLabel">Обработать фото через Cloud.ru</span> <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
+              <label class="inline-check auto-run-choice"><input type="checkbox" id="autoRecognize"> После выбора автоматически запускать Cloud.ru (платные запросы, только если ключ настроен)</label>
+              <div id="batchStatus" class="batch-status" role="list" aria-label="Ход обработки фотографий" aria-live="polite"></div>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
               <div class="photo-status-steps" id="photoStatusSteps" role="group" aria-label="Этапы обработки"><span>Ожидание</span><span>Подготовка</span><span>Распознавание</span><span>Проверка</span><span>Готово</span></div>
               <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
               <p id="humorCaption" class="humor-caption" aria-live="off" hidden></p>
-              <label class="inline-check"><input id="humorEnabled" type="checkbox" checked> Шуточные комментарии ИИ (включая чёрный юмор)</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+              <label class="inline-check"><input id="humorEnabled" type="checkbox"> Необязательные комментарии во время обработки</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
-              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
+              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
+              <details class="advanced-photo-tools"><summary>Дополнительные инструменты · сетка, локальный OCR, выравнивание</summary><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <button id="localRead" class="button button-outline" type="button">Прочитать ячейки без Cloud.ru</button>
               <p id="rapidOCRStatus" class="help" role="status">RapidOCR CPU: проверяю локальный сервис…</p>
               <button id="perspectivePreview" class="button button-outline" type="button">Выровнять лист · предпросмотр</button>
@@ -87,7 +97,7 @@
                 <p id="perspectiveNote" class="help">Исправленная геометрия не заменяет исходник автоматически.</p>
                 <img id="perspectiveImage" alt="Экспериментальный вариант с исправленной перспективой">
               </div>
-              <div id="localReadResults" class="local-read-results" hidden></div>
+              <div id="localReadResults" class="local-read-results" hidden></div></details>
               <div class="preview-surface" id="previewSurface">
                 <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>

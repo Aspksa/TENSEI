@@ -295,7 +295,20 @@ function queueFiles(chosen){
     state.queue.push(file);
   }
   drawQueue();
-  if(state.queue.length)showPreview(state.queue[0]);
+  if(state.queue.length){
+    try{showPreview(state.queue[0])}
+    catch(e){status('Файл добавлен, но предпросмотр не работает: '+e.message,'error')}
+    const message='Добавлено фотографий: '+state.queue.length+'. '+
+      (state.hasKey?'Нажмите «Обработать автоматически» для запуска Cloud.ru.':
+        'Сначала сохраните API-ключ Cloud.ru в настройках. Без ключа доступна локальная проверка.');
+    $('uploadFeedback').textContent=message;
+    $('progressStatus').textContent=message;
+    $('recognize').focus();
+    if($('autoRecognize').checked&&state.hasKey&&!state.busy){
+      // Only after explicit opt-in: OCR can create paid Cloud.ru requests.
+      void Promise.resolve().then(()=>$('recognize').click());
+    }
+  }else{$('uploadFeedback').textContent='Очередь пуста. Добавьте фотографию.'}
   if(bad.length)status('Некоторые файлы не добавлены: '+bad.join(', '),'error');
 }
 function drawQueue(){
@@ -311,7 +324,13 @@ function drawQueue(){
   }
   $('queuedCount').textContent=state.queue.length?'('+state.queue.length+')':'';
   $('recognize').disabled=state.busy||state.queue.length===0;
+  // Preserve the nested queuedCount span. Setting button.textContent
+  // would remove it and crash the next file-upload event.
+  const label=$('recognizeLabel');
+  label.textContent=state.busy?'Идёт распознавание…':
+    state.queue.length?'Обработать фото через Cloud.ru':'Обработать фото через Cloud.ru';
   $('clearQueue').disabled=state.busy||state.queue.length===0;
+  $('autoRecognize').disabled=state.busy;
 }
 let gridBoxes=[];
 function drawPreviewGrid(boxes=gridBoxes){
@@ -403,9 +422,19 @@ function showPreview(file){
   $('highlightBox').hidden=true;
   $('previewFilename').textContent='';
   if(!file)return;
-  state.previewUrl=URL.createObjectURL(file);
   $('previewFilename').textContent=file.name;
-  const ticket=state.previewUrl;
+  let ticket;
+  try{ticket=URL.createObjectURL(file);state.previewUrl=ticket}
+  catch{
+    // Some browser/privacy modes do not expose object URLs for local files.
+    const fallback=fileData(file).then(data=>{
+      if(state.queue.includes(file)){$('previewImage').src=data;
+        $('previewFilename').textContent=file.name}
+    }).catch(e=>status('Не удалось открыть фотографию: '+e.message,'error'));
+    void fallback;
+    $('qualityStatus').textContent='Файл добавлен; проверяю доступность просмотра…';
+    return;
+  }
   $('qualityStatus').textContent='Проверяю разрешение и качество фотографии локально…';
   fileData(file).then(image=>api('quality',{image}))
     .then(result=>{
@@ -434,14 +463,35 @@ $('photoFiles').onchange=e=>{queueFiles([...e.target.files]);e.target.value=''};
 for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragging')});
 for(const ev of ['drop','dragleave'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragging')});
 drop.addEventListener('drop',e=>queueFiles([...e.dataTransfer.files]));
+$('runDiagnostics').onclick=async()=>{
+  const button=$('runDiagnostics'),target=$('diagnosticsResults');
+  button.disabled=true;target.textContent='Проверка локального сервера и сохранённых данных…';
+  try{
+    const report=await api('diagnostics',undefined,'GET');
+    const lines=[
+      report.checks.cloudKeyConfigured?'Cloud.ru: ключ сохранён':'Cloud.ru: ключ не настроен',
+      'Сохранённых строк фото: '+(report.checks.savedPhotoRows??'ошибка'),
+      'История заданий: '+(report.checks.photoTasks??'ошибка'),
+      'Импортов «Легиона»: '+(report.checks.legionImports??'ошибка'),
+      'RapidOCR: '+(report.checks.rapidOCR==='ready'?'работает':'необязательный модуль не запущен')
+    ];
+    if(report.checks.lastTask?.error)lines.push('Последняя ошибка фото: '+report.checks.lastTask.error);
+    lines.push(...(report.warnings||[]).slice(0,8));
+    target.replaceChildren();
+    for(const line of lines){const p=document.createElement('p');p.textContent=line;target.append(p)}
+  }catch(e){target.textContent='Диагностика недоступна: '+e.message}
+  finally{button.disabled=false}
+};
 $('clearQueue').onclick=()=>{if(state.busy)return;state.queue=[];drawQueue();showPreview(null)};
 $('recognize').onclick=async()=>{
   if(state.busy||!state.queue.length)return;
   if(!state.hasKey){
+    $('uploadFeedback').textContent='Обработка не началась: требуется API-ключ Cloud.ru. Откройте настройки, сохраните ключ и повторите запуск.';
     $('settingsDetails').open=true;
     $('settings').scrollIntoView({behavior:'smooth',block:'start'});
     return status('Сначала введите API-ключ и сохраните настройки Cloud.ru.','error');
   }
+  $('uploadFeedback').textContent='Обработка запущена. Прогресс и ошибки появятся ниже; не закрывайте вкладку.';
   state.busy=true;drawQueue();$('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
   const batch=[...state.queue];state.queue=[];
   const batchStates=batch.map(file=>({file,status:'В очереди',kind:'queued'}));
@@ -506,6 +556,9 @@ $('recognize').onclick=async()=>{
     $('progressBar').style.width='100%';
     updateSteps(failed.length?3:4);
     $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
+    $('uploadFeedback').textContent=failed.length?
+      'Обработано '+done+' из '+batch.length+'. Ошибочные файлы остались в очереди — подробности ниже.':
+      'Готово: '+done+' фото. Проверьте строки в таблице, затем скачайте Excel.';
     if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
     else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
   }finally{
@@ -801,6 +854,7 @@ async function initialize(){
     $('maxCloudCalls').value=String(cfg.maxCloudCalls||3);
     state.hasKey=Boolean(cfg.hasKey);
     if(!state.hasKey)$('settingsDetails').open=true;
+    if(state.queue.length)drawQueue();
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey
       ?'Ключ уже сохранён на диске. Для замены введите новый, затем нажмите «Сохранить».'
@@ -817,4 +871,13 @@ async function initialize(){
     if(state.rows.length)$('saveStatus').textContent='Восстановлен черновик ('+state.rows.length+')';
   }catch(e){status('Не удалось открыть сохранённый журнал: '+e.message,'error')}
 }
+
+// Surface unexpected UI failures rather than silently leaving dead buttons.
+window.addEventListener('error',event=>{
+  const message=String(event.message||'Неизвестная ошибка интерфейса').slice(0,240);
+  status('Ошибка интерфейса: '+message+'. Перезагрузите страницу; если повторится, откройте диагностику.','error');
+});
+window.addEventListener('unhandledrejection',event=>{
+  status('Ошибка операции: '+String(event.reason?.message||event.reason||'Неизвестно').slice(0,240),'error');
+});
 initialize();

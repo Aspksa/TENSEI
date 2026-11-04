@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm,readdir,stat} from 'node:fs/promises';
+import {mkdtemp,rm,readdir,stat,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -213,5 +213,28 @@ test('unified fleet API combines repeated Legion imports and photo evidence with
     const markup=await r.text();
     assert.match(markup,/id="fleetTable"/);
     assert.match(markup,/id="exportFleet"/);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});
+
+test('broken saved CSV and draft do not blank fleet statistics or hide missing data',async()=>{
+  const svc=await serverStart();
+  try{
+    const saved=await post(svc.url,'import-csv',{name:'lost.csv',
+      file:'data:text/csv;base64,'+sampleBase64});
+    assert.equal(saved.status,200,JSON.stringify(saved.body));
+    await rm(path.join(svc.dir,'data','legion','imports',saved.body.importId+'.json'));
+    await writeFile(path.join(svc.dir,'data','draft.json'),'{broken JSON','utf8');
+    const r=await fetch(svc.url+'/api/fleet/stats');
+    assert.equal(r.status,200,'must recover a usable error-reporting dashboard');
+    const result=await r.json();
+    assert.equal(result.partial,true,'unavailable sources must never produce unqualified totals');
+    assert.equal(result.totals.trips,0);
+    assert.ok(result.warnings.some(x=>x.includes('импорт')));
+    assert.ok(result.warnings.some(x=>x.includes('Черновик')));
+    const exportResponse=await fetch(svc.url+'/api/fleet/export');
+    assert.equal(exportResponse.status,200);
+    const book=new ExcelJS.Workbook();
+    await book.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
+    assert.equal(book.getWorksheet('Контроль').getCell('B16').value.includes('НЕПОЛНАЯ'),true);
   }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
 });
