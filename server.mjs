@@ -34,7 +34,7 @@ async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.r
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,autoPipeline:o.autoPipeline===true,costMode:['off','auto','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,cvPreprocess:o.cvPreprocess===true,gridSegmentation:o.gridSegmentation===true,autoPipeline:o.autoPipeline!==false,costMode:['off','auto','economy','balanced','quality'].includes(o.costMode)?o.costMode:'auto',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
   catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,cvPreprocess:false,gridSegmentation:false,autoPipeline:true,costMode:'auto',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
