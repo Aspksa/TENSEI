@@ -80,6 +80,7 @@
                 <button id="recognize" class="button button-primary" type="button"><span id="recognizeLabel">Обработать фото через Cloud.ru</span> <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
               <label class="inline-check auto-run-choice"><input type="checkbox" id="autoRecognize"> После выбора автоматически запускать Cloud.ru (платные запросы, только если ключ настроен)</label>
+              <div id="batchStatus" class="batch-status" role="list" aria-label="Ход обработки фотографий" aria-live="polite"></div>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
               <div class="photo-status-steps" id="photoStatusSteps" role="group" aria-label="Этапы обработки"><span>Ожидание</span><span>Подготовка</span><span>Распознавание</span><span>Проверка</span><span>Готово</span></div>
               <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
