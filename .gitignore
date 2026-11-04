@@ -3,3 +3,6 @@ data/
 node_modules/
 .env
 *.log
+
+# Generated Legion reports may contain private driver and vehicle data.
+reports/

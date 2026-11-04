@@ -12,6 +12,7 @@ import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
+import {createLegionHandler} from './lib/legion-server.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -144,6 +145,7 @@ async function excel(raw){
 }
 async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
   catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
+const handleLegion=createLegionHandler({root,dataDir,json,send});
 const server=http.createServer(async(req,res)=>{
   try{
     if(!safeRequest(req))return send(res,403,{error:'Доступ только с локального компьютера'});
@@ -151,12 +153,15 @@ const server=http.createServer(async(req,res)=>{
     res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
     const url=new URL(req.url,'http://127.0.0.1');
-    const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8']};
+    const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],
+      '/legion.js':['legion.js','text/javascript; charset=utf-8'],
+      '/legion.css':['legion.css','text/css; charset=utf-8']};
     if(req.method==='GET'&&staticFiles[url.pathname]){
       const [filename,type]=staticFiles[url.pathname];
       res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});
       return res.end(await fs.readFile(path.join(root,filename)));
     }
+    if(url.pathname.startsWith('/api/legion/'))return await handleLegion(req,res,url);
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru});
