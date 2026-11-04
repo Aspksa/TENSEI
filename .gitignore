@@ -6,3 +6,9 @@ node_modules/
 
 # Generated Legion reports may contain private driver and vehicle data.
 reports/
+
+# Personal migration archives and optional local CPU OCR environment
+backups/
+.rapidocr-venv/
+.tensei-restore-*/
+TENSEI_backup_*.zip
