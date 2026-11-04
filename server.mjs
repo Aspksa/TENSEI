@@ -133,7 +133,7 @@ async function recognize(input){
     const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,photoGroup,
       missingRows:result.missingRows,documentHint:result.documentHint,cellConsensus:result.cellConsensus,
-      digitCells:result.digitCells,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
+      digitCells:result.digitCells,ocrComparison:result.ocrComparison,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
@@ -148,7 +148,7 @@ async function recognize(input){
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,photoGroup,
       missingRows:result.missingRows,documentHint:result.documentHint,
-      cellConsensus:result.cellConsensus,digitCells:result.digitCells,
+      cellConsensus:result.cellConsensus,digitCells:result.digitCells,ocrComparison:result.ocrComparison,
       localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
