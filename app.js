@@ -211,7 +211,7 @@ async function checkConnection(){
           }
           $('model').value=suggestion.id;
           diagnostic('Выбрана модель '+suggestion.id+'. Сохраняю и проверяю доступ…');
-          $('settingsForm').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+          $('settingsForm').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));
         };
         panel.append(btn);
       }else{
