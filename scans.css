@@ -49,3 +49,5 @@
 .reprocess-option{font-size:11px;margin-top:9px}
 @media(max-width:650px){.scan-library{padding:14px}.scan-library-heading h2{font-size:15px}.scan-library-heading p{font-size:11px}.scan-library-heading>button{font-size:11px;padding:7px;min-height:34px}.scan-gallery{grid-template-columns:1fr}.scan-vector{flex-basis:74px;width:74px;height:80px}.scan-vector svg{width:74px;height:74px}.scan-stages span{font-size:8px}.scan-console{padding:11px}.scan-console-info strong{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.scan-console.is-running .scan-beam{animation:none}.scan-item{transition:none}.scan-ring-progress{transition:none}}
+
+.storage-warning{border-radius:9px;background:#fff5e8;color:#83561f;border:1px solid #ecd2a8;padding:11px 14px;font-size:12px;line-height:1.55;margin:11px 0 7px}
