@@ -32,6 +32,9 @@ test('PaddleOCR table cell boxes convert to relative coordinates',()=>{
   assert.equal(result.cells.length,4);
   assert.deepEqual(result.cells[0],[0,0,.5,.5]);
   assert.ok(result.rows.length>=2);
+  const sidecar=normalizePaddle({cells:[[0,0,.4,.5],[.4,0,.8,.5]],row_boxes:[[0,0,1,.5]]},400,200);
+  assert.equal(sidecar.cells.length,2);
+  assert.equal(sidecar.rows.length,1);
 });
 test('Chandra disagreements are advisory and do not silently replace values',()=>{
   const res=compareRowsWithChandra([{tare:10000,gross:45000,net:35000}],'10000 45000 33000');
