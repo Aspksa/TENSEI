@@ -124,7 +124,9 @@
                 <button id="recognize" class="button button-primary" type="button">Распознать <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
-              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+              <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
+              <p id="humorCaption" class="humor-caption" aria-live="off" hidden></p>
+              <label class="inline-check"><input id="humorEnabled" type="checkbox" checked> Шуточные комментарии ИИ (включая чёрный юмор)</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
