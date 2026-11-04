@@ -1,0 +1,6 @@
+# Lightweight CPU-only ruled-table segmentation; no PaddlePaddle, Cloud.ru or GPU.
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+numpy>=1.24,<3
+pillow>=10,<13
+opencv-python-headless>=4.9,<5
