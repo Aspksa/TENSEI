@@ -82,7 +82,7 @@ function scheduleVerifiedExcel(){
   },850);
 }
 function updateSummary(){
-  const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length).length;
+  const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length||!x.row.reviewed).length;
   const kilos=state.rows.reduce((sum,row)=>{const v=asWeight(row.net);return sum+(Number.isFinite(v)?v:0)},0);
   $('metricRows').textContent=state.rows.length;
   $('metricIssues').textContent=numIssues;
@@ -140,7 +140,7 @@ function cell(index,key,row){
 function renderTable(){
   const tbody=$('rowsBody');tbody.replaceChildren();
   const query=$('search').value.trim().toLowerCase(),onlyIssues=$('onlyIssues').checked;
-  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
+  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length||!row.reviewed)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
   const fragment=document.createDocumentFragment();
   for(const {row,index,issues} of selection){
     const tr=document.createElement('tr');
@@ -154,12 +154,16 @@ function renderTable(){
     reviewed.append(check);tr.append(reviewed);
     const issue=document.createElement('td'),flag=document.createElement('span');
     flag.className='flag'+(issues.length?' issue':'');
-    flag.textContent=issues.length?'⚠ '+issues.length+' замеч.':'✓ Без замечаний';
-    flag.title=issues.join('; ');issue.append(flag);tr.append(issue);
+    flag.textContent=issues.length?'⚠ '+issues.length+' замеч.':row.reviewed?'✓ Сверено':'◷ Сверить';
+    flag.title=[...issues,...(!row.reviewed?['Не подтверждено по фото']:[])].join('; ');issue.append(flag);tr.append(issue);
     const control=document.createElement('td'),remove=document.createElement('button');
     remove.type='button';remove.className='row-remove';remove.textContent='×';
     remove.title='Удалить строку '+(index+1);
     remove.onclick=()=>{if(confirm('Удалить строку '+(index+1)+'?')){state.rows.splice(index,1);updateRecords()}};
+    if(row.sourceId){const photo=document.createElement('button');photo.type='button';photo.className='row-photo';photo.textContent='Фото';
+      photo.title='Открыть исходный снимок и увеличенный фрагмент';
+      photo.onclick=event=>{event.stopPropagation();showSource(row);$('upload').scrollIntoView({behavior:'smooth',block:'start'});};
+      control.append(photo);}
     control.append(remove);tr.append(control);fragment.append(tr);
   }
   tbody.append(fragment);
@@ -169,7 +173,7 @@ function renderTable(){
 }
 function renderAudit(){
   const area=$('auditList');area.replaceChildren();
-  const issues=inspect(state.rows).filter(x=>x.issues.length);
+  const issues=inspect(state.rows).filter(x=>x.issues.length||!x.row.reviewed);
   if(!issues.length){
     const p=document.createElement('p');p.className='audit-empty';p.textContent=state.rows.length?'Автоматических замечаний нет. Сверьте цифры с оригиналами.':'Замечания появятся после распознавания.';area.append(p);return;
   }
@@ -178,7 +182,7 @@ function renderAudit(){
     const div=document.createElement('div');div.className='audit-item';
     const desc=document.createElement('div'),title=document.createElement('strong'),p=document.createElement('p');
     title.textContent='Строка '+(item.index+1)+' · '+(item.row.vehicle||'номер не указан');
-    p.textContent=item.issues.join(' · ');
+    p.textContent=[...item.issues,...(!item.row.reviewed?['Не подтверждено по фотографии']:[])].join(' · ');
     desc.append(title,p);
     const btn=document.createElement('button');btn.className='button button-outline';btn.type='button';btn.textContent='Открыть строку';
     btn.onclick=()=>{
