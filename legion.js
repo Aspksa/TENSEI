@@ -5,7 +5,8 @@ const setBusy=flag=>{
   state.busy=flag;
   for(const id of ['legionCsvFile','legionMasterFile','legionGenerate','legionDownloadZip','legionExportMaster']){
     const el=$(id);if(el)el.disabled=flag||(id==='legionDownloadZip'&&!state.lastReport)||
-      (id==='legionGenerate'&&(!state.importId||!state.preview?.audit?.ready||!!state.preview?.errors?.length));
+      (id==='legionGenerate'&&(!state.importId||!state.preview?.audit?.ready||
+        (!!state.preview?.errors?.length&&!$('legionAcceptSkipped').checked)));
   }
 };
 function showPage(name){
@@ -195,7 +196,8 @@ function drawPreview(result){
     errors.append(strong,p);
   }
   showUnknown(result.unknown);
-  $('legionGenerate').disabled=!audit.ready;
+  $('legionGenerate').disabled=!audit.ready||
+    (!!result.errors?.length&&!$('legionAcceptSkipped').checked);
   $('legionImportStatus').textContent='Загружено '+result.count+
     ' рейсов. Групп отчётов: '+(result.groups?.length||0)+'.';
 }
@@ -235,7 +237,8 @@ $('legionCsvFile').onchange=async event=>{
 
 async function generate(){
   if(!state.importId||state.busy)return;
-  if(!state.preview?.audit?.ready||state.preview?.errors?.length)
+  if(!state.preview?.audit?.ready||
+     (state.preview?.errors?.length&&!$('legionAcceptSkipped').checked))
     return notice('Сначала исправьте критические замечания CSV и заполните базу ТС.','error');
   setBusy(true);
   $('legionStage').textContent='Формирую сводный Excel и отчёты по товарам…';
@@ -257,6 +260,9 @@ async function generate(){
   finally{setBusy(false)}
 }
 $('legionGenerate').onclick=generate;
+$('legionAcceptSkipped').onchange=()=>{if(state.preview&&!state.busy)
+  $('legionGenerate').disabled=!state.preview.audit?.ready||
+    (!!state.preview.errors?.length&&!$('legionAcceptSkipped').checked)};
 $('legionDownloadZip').onclick=async()=>{
   if(!state.lastReport)return;
   try{await downloadBlob('/api/legion/download/'+state.lastReport.reportId,state.lastReport.zip)}
