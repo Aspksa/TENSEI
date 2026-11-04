@@ -313,49 +313,172 @@ for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventD
 for(const ev of ['drop','dragleave'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragging')});
 drop.addEventListener('drop',e=>queueFiles([...e.dataTransfer.files]));
 $('clearQueue').onclick=()=>{if(state.busy)return;state.queue=[];drawQueue();showPreview(null)};
+async function openArchivedScan(id){
+  if(state.busy)return;
+  await flushSave();
+  const result=await api('scans/'+id,undefined,'GET');
+  const scan=result.scan;
+  if(scan.status!=='done')return status('Скан пока не распознан. Статус: '+scan.stage,'error');
+  state.activeScanId=id;state.rows=Array.isArray(result.rows)?result.rows:[];
+  state.revision++;
+  $('saveStatus').textContent='Результат хранится отдельно в библиотеке сканов';
+  $('activeScanLabel').textContent='Фото: '+scan.name+' · '+scan.rowsCount+' строк · '+scan.createdAt.slice(0,16).replace('T',' ');
+  $('comparisonDetails').hidden=!result.comparison?.raw;
+  if(result.comparison?.raw)$('comparisonText').textContent=result.comparison.raw;
+  $('search').value='';$('onlyIssues').checked=false;
+  updateSummary();renderTable();renderAudit();
+  const img=$('previewImage');
+  if(state.previewUrl){URL.revokeObjectURL(state.previewUrl);state.previewUrl=null}
+  $('highlightBox').hidden=true;
+  $('previewFilename').textContent=scan.name;
+  img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true};
+  img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false};
+  img.src='/api/scans/'+id+'/preview';
+  $('qualityStatus').textContent=scan.warnings?.length?scan.warnings.join(' · '):
+    'Исходная фотография сохранена локально. Сверьте цифры с оригиналом.';
+  $('results').scrollIntoView?.({behavior:'smooth',block:'start'});
+  await refreshScanLibrary().catch(()=>{});
+}
+async function refreshScanLibrary(){
+  const result=await api('scans',undefined,'GET');
+  const box=$('scanGallery');box.replaceChildren();
+  $('scanArchiveCount').textContent=result.total||0;
+  const items=result.scans||[];
+  if(!items.length){
+    const p=document.createElement('div');p.className='scan-gallery-empty';
+    p.textContent='Здесь появятся все загруженные фотографии. Даже при ошибке OCR оригинал остаётся на диске.';
+    box.append(p);return;
+  }
+  const fragment=document.createDocumentFragment();
+  for(const scan of items){
+    const card=document.createElement('article');card.className='scan-item'+
+      (state.activeScanId===scan.id?' active':'');
+    const hero=document.createElement('div');hero.className='scan-item-hero';
+    const image=document.createElement('img');image.loading='lazy';image.alt='Фото '+scan.name;
+    image.src='/api/scans/'+scan.id+'/preview';
+    const content=document.createElement('div');content.className='scan-item-main';
+    const name=document.createElement('strong');name.textContent=scan.name;
+    name.title=scan.name;
+    const when=document.createElement('small');when.textContent=(scan.createdAt||'').slice(0,16).replace('T',' ')+' · '+(scan.rowsCount||0)+' строк';
+    const chip=document.createElement('span');chip.className='scan-chip '+scan.status;
+    chip.textContent={
+      done:'✓ Готово',error:'Ошибка OCR',interrupted:'Прервано',queued:'В очереди',processing:'Идёт обработка'
+    }[scan.status]||scan.status;
+    content.append(name,when,chip);hero.append(image,content);card.append(hero);
+    const actions=document.createElement('div');actions.className='scan-item-actions';
+    if(scan.status==='done'){
+      const open=document.createElement('button');open.type='button';open.textContent='Открыть таблицу';
+      open.title='Загрузить строки именно этой фотографии, не смешивая с другими сканами';
+      open.onclick=()=>openArchivedScan(scan.id).catch(e=>status(e.message,'error'));actions.append(open);
+    }
+    if(['done','error','interrupted'].includes(scan.status)){
+      const retry=document.createElement('button');retry.type='button';
+      retry.textContent=scan.status==='done'?'Повторить OCR':'Повторить';
+      retry.title='Новый запрос Cloud.ru может стоить денег. Оригинальный файл сохранится.';
+      retry.onclick=()=>repeatArchivedScan(scan).catch(e=>status(e.message,'error'));
+      actions.append(retry);
+    }
+    const original=document.createElement('a');original.href='/api/scans/'+scan.id+'/original';
+    original.textContent='Оригинал';original.title='Скачать исходный файл без изменений';
+    original.setAttribute('download',scan.name);actions.append(original);
+    card.append(actions);
+    if(scan.error){
+      const warning=document.createElement('div');warning.className='scan-item-warning';
+      warning.textContent=scan.error;warning.title=scan.error;card.append(warning);
+    }else if(scan.status==='processing'){
+      const wait=document.createElement('div');wait.className='scan-item-warning scan-warning-state';
+      wait.textContent=scan.stage;card.append(wait);
+    }
+    fragment.append(card);
+  }
+  box.append(fragment);
+}
+$('refreshScans').onclick=()=>refreshScanLibrary().catch(e=>status('Библиотека недоступна: '+e.message,'error'));
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function pollArchivedScan(scanId,caption){
+  const begin=Date.now(),maxMs=25*60*1000;
+  let unavailable=0;
+  while(Date.now()-begin<maxMs){
+    let record;
+    try{
+      record=await api('scans/'+scanId,undefined,'GET');
+      unavailable=0;
+    }catch(e){
+      unavailable++;
+      if(unavailable>=4)throw Error('Не удаётся получить статус локального сервера: '+e.message+
+        '. Файл уже сохранён — проверьте библиотеку после перезапуска.');
+      await sleep(1100);continue;
+    }
+    const scan=record.scan;
+    window.TENSEIScanVisual?.update(scan);
+    $('progressStatus').textContent=caption+' · '+scan.stage+
+      ' · '+scan.status+' · '+Math.round((Date.now()-begin)/1000)+' с';
+    if(['done','error','interrupted'].includes(scan.status))return record;
+    await sleep(900);
+  }
+  throw Error('Время наблюдения вышло. Фото осталось на диске: откройте библиотеку, чтобы проверить задачу.');
+}
+async function repeatArchivedScan(scan){
+  if(state.busy)return status('Сначала завершите текущую очередь распознавания.','error');
+  if(!confirm('Повторное распознавание «'+scan.name+'» создаст новый платный запрос Cloud.ru. Продолжить?'))return;
+  await flushSave();state.busy=true;drawQueue();
+  try{
+    await api('scans/'+scan.id+'/retry',{force:scan.status==='done'});
+    const result=await pollArchivedScan(scan.id,'Повтор: '+scan.name);
+    if(result.scan.status==='done'){
+      state.busy=false;
+      await openArchivedScan(scan.id);
+      status('Повторное распознавание завершено. Старый результат сохранён в резервной копии.','success');
+    }else status('Не удалось распознать скан: '+(result.scan.error||'Ошибка'), 'error');
+  }finally{state.busy=false;drawQueue();await refreshScanLibrary().catch(()=>{})}
+}
 $('recognize').onclick=async()=>{
   if(state.busy||!state.queue.length)return;
   if(!state.hasKey){
     $('settingsDetails').open=true;
-    $('settings').scrollIntoView({behavior:'smooth',block:'start'});
-    return status('Сначала введите API-ключ и сохраните настройки Cloud.ru.','error');
+    $('settings').scrollIntoView?.({behavior:'smooth',block:'start'});
+    return status('Сначала сохраните API-ключ и доступную мультимодальную модель Cloud.ru.','error');
   }
-  state.busy=true;drawQueue();$('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
+  await flushSave();
+  state.busy=true;drawQueue();
+  $('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
   const batch=[...state.queue];state.queue=[];
-  const failed=[],failures=new Set();
-  let done=0,usedModel='';
+  const failedUploads=[],errors=[];
+  let done=0,saved=0;
   try{
     for(const [index,file] of batch.entries()){
-      $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
-      $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
+      const caption='Фото '+(index+1)+' из '+batch.length+': '+file.name;
+      $('progressStatus').textContent=caption+' · сохраняю оригинал…';
       showPreview(file);
       try{
-        const result=await api('recognize',{image:await fileData(file),name:file.name,
+        const result=await api('scans',{image:await fileData(file),name:file.name,
           templateId:$('templateSelect').value,force:$('forceReprocess')?.checked===true});
-        if(!state.rows.some(x=>x.sourceId&&x.sourceId===result.sourceId))
-          state.rows.push(...result.rows);
-        usedModel=result.model||usedModel;
-        const warnings=[...(result.warnings||[])];
-        if(result.cached)warnings.unshift('Страница взята из кэша, повторная плата за распознавание не требуется.');
-        if(result.quality?.warnings?.length||warnings.length)
-          $('qualityStatus').textContent=[...new Set(warnings)].slice(0,4).join(' · ');
-        else $('qualityStatus').textContent='Основные показатели качества фото без автоматических замечаний.';
-        if(result.comparison?.raw){
-          $('comparisonDetails').hidden=false;
-          $('comparisonText').textContent=result.comparison.raw;
-        }
-        done++;
-        updateRecords();
-        await refreshTasks().catch(()=>{});
-      }catch(e){failed.push(file);failures.add(e.message);await refreshTasks().catch(()=>{})}
+        const scanId=result.scan.id;saved++;
+        await refreshScanLibrary().catch(()=>{});
+        const ended=await pollArchivedScan(scanId,caption);
+        if(ended.scan.status==='done'){
+          done++;
+          // Previous scan edits were flushed before the batch; keep each table separate.
+          state.busy=false;
+          await openArchivedScan(scanId);
+          state.busy=true;
+        }else errors.push(file.name+': '+ended.scan.error);
+      }catch(e){
+        if(!saved||saved<index+1)failedUploads.push(file);
+        errors.push(file.name+': '+e.message);
+      }
+      await refreshScanLibrary().catch(()=>{});
     }
-    state.queue.push(...failed);
-    $('progressBar').style.width='100%';
-    $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
-    if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
-    else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
+    state.queue.push(...failedUploads);
+    $('progressStatus').textContent='Фотографий распознано: '+done+'/'+batch.length+
+      '. Сканов сохранено: '+saved+'. Все оригиналы находятся в библиотеке.';
+    if(errors.length)status('Часть сканов требует внимания: '+errors.slice(0,3).join(' | ')+
+      '. Сохранённые фото можно повторить из библиотеки.','error');
+    else status('Все фотографии обработаны и сохранены по отдельности. Выберите нужный скан в библиотеке.','success');
   }finally{
-    state.busy=false;$('addRow').disabled=false;$('clearData').disabled=false;drawQueue();updateSummary();if(state.rows.length)queueSave();
+    state.busy=false;
+    $('addRow').disabled=false;$('clearData').disabled=false;
+    drawQueue();updateSummary();
   }
 };
 $('search').oninput=renderTable;
@@ -379,16 +502,19 @@ $('download').onclick=async()=>{
 };
 $('clearData').onclick=async()=>{
   if(state.busy)return;
-  if(!confirm('Удалить все строки и сохранённый черновик?'))return;
-  clearTimeout(state.saveTimer);
+  if(!confirm('Очистить только открытую таблицу? Сохранённые фотографии и распознанные строки останутся в библиотеке.'))return;
   const control=$('clearData');control.disabled=true;
   try{
-    await state.savePending;
-    await api('draft',undefined,'DELETE');
-    state.rows=[];state.revision++;updateSummary();renderTable();renderAudit();
-    $('saveStatus').textContent='Черновик очищен';
-    status('Таблица очищена.','success');
-  }catch(e){status('Не удалось очистить черновик: '+e.message,'error')}
+    await flushSave();
+    if(!state.activeScanId)await api('draft',undefined,'DELETE');
+    state.activeScanId=null;
+    state.rows=[];state.revision++;
+    updateSummary();renderTable();renderAudit();
+    $('activeScanLabel').textContent='Новый пустой рабочий лист. Архив фотографий сохранён.';
+    $('saveStatus').textContent='Рабочая таблица очищена; библиотека не затронута';
+    status('Рабочая таблица очищена. Фотографии и результаты сохранены отдельно.','success');
+    await refreshScanLibrary().catch(()=>{});
+  }catch(e){status('Не удалось очистить рабочую таблицу: '+e.message,'error')}
   finally{control.disabled=false}
 };
 async function refreshTasks(){
@@ -472,7 +598,8 @@ function showSource(row){
 
 async function initialize(){
   updateSummary();renderTable();renderAudit();drawQueue();
-  await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{})]);
+  await Promise.all([refreshTemplates().catch(()=>{}),refreshTasks().catch(()=>{}),
+    refreshScanLibrary().catch(()=>{})]);
   try{
     const cfg=await api('settings',undefined,'GET');
     populateModels(cfg.models,cfg.model);
