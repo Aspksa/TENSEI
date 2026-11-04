@@ -134,6 +134,40 @@ def run_ocr(binary, width, height):
             gc.collect()
 
 
+def run_rotated_digits(binary):
+    """Operator-requested ±8 degree variants only. No auto-accept and no cloud."""
+    from PIL import Image
+    from rapidocr import RapidOCR
+    global _engine
+    results = []
+    try:
+        if _engine is None:
+            _engine = RapidOCR()
+        for degrees in (0, -8, 8):
+            if degrees == 0:
+                rotated = binary
+            else:
+                with Image.open(io.BytesIO(binary)) as original:
+                    image = original.convert("RGB")
+                image = image.rotate(degrees, resample=Image.Resampling.BICUBIC,
+                                     expand=False, fillcolor="white")
+                buf = io.BytesIO()
+                image.save(buf, format="JPEG", quality=91)
+                rotated = buf.getvalue()
+            with Image.open(io.BytesIO(rotated)) as info:
+                result = normalize_output(_engine(rotated), info.width, info.height)
+            results.append({"rotationDegrees": degrees,
+                            "readings": [line["text"] for line in result["lines"][:8]],
+                            "verified": False})
+        return {"engine": "RapidOCR CPU ONNX", "variants": results,
+                "verified": False, "localOnly": True,
+                "note": "Угол -8 или +8 градусов — только кандидат. Сверяйте по оригиналу."}
+    finally:
+        if not KEEP_WARM:
+            _engine = None
+            gc.collect()
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -164,7 +198,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("Invalid payload size")
             obj = json.loads(self.rfile.read(length))
             binary, width, height = decode_image(obj.get("image"))
-            self._send(200, run_ocr(binary, width, height))
+            if obj.get("mode") == "digit-variants":
+                if width * height > 1_500_000:
+                    raise ValueError("Digit-variant crop is too large")
+                self._send(200, run_rotated_digits(binary))
+            else:
+                self._send(200, run_ocr(binary, width, height))
         except Exception as exc:
             self._send(422, {"error": str(exc)[:180]})
 
