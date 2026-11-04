@@ -337,7 +337,7 @@ const server=http.createServer(async(req,res)=>{
       if(!layout&&!digits&&!texts)
         throw Error('Локальные OCR-модули недоступны. Установите OpenCV и PaddleOCR.');
       return send(res,200,{localOnly:true,cloudCalls:0,verified:false,
-        rows:[],layout, digitCells:digits,
+        rows:[],layout, digitCells:digits,localText: texts?.lines||[],
         documentHint:classifyFromLayout(layout,texts,BUILTIN_TEMPLATES),
         cellConsensus:localOcrConsensus(texts,{recognizedCells:
           (digits?.cells||[]).map(x=>({bbox:x.bbox,text:x.text}))}),
