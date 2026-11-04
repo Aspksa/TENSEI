@@ -1,5 +1,4 @@
 import {humorCategory,createHumorRotator} from './humor-messages.js';
-import {exportReadiness,statusLabel} from './lib/review-policy.mjs';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
 const columns=['time','vehicle','driver','tare','gross','net','note'];
@@ -54,6 +53,20 @@ function inspect(items){
     seen.add(fingerprint);
     return {row,index,issues};
   });
+}
+function exportReadiness(rows){
+  const checks=inspect(rows);
+  const reviewPending=checks.filter(x=>!x.row.reviewed).map(x=>x.index+1);
+  const invalid=checks.filter(x=>x.issues.length).map(x=>({row:x.index+1,issues:x.issues}));
+  return {ready:checks.length>0&&!reviewPending.length&&!invalid.length,
+    reviewPending,invalid};
+}
+function statusLabel(task){
+  if(task.status==='done')return 'Готово · '+(task.rowCount||0)+' строк';
+  if(task.status==='error')return 'Ошибка · '+String(task.error||'нет подробностей').slice(0,90);
+  if(task.status==='processing')return 'Обработка · '+(task.phase||'подготовка')+' · '+
+    Math.min(99,Math.max(0,Number(task.progress)||0))+'%';
+  return 'В очереди';
 }
 let lastVerifiedExcelSignature='',verifiedExcelTimer=null,exportInFlight=false;
 function scheduleVerifiedExcel(){
