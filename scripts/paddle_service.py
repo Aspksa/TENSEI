@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 import uvicorn
-from grid_geometry import detect_grid
+from grid_geometry import detect_grid, detect_text_bands
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
@@ -126,8 +126,9 @@ def analyze(photo: Photo):
                     "width": w, "height": h, **geometry,
                     "paddle_cell_count": len(cells),
                     "layout_source": "ruling"}
+        tentative = detect_text_bands(image) if not cells else {"row_boxes": []}
         return {"engine": "PP-StructureV3", "width": w, "height": h,
-                "cells": cells[:800], "row_boxes": cluster_rows(cells),
+                "cells": cells[:800], "row_boxes": cluster_rows(cells) or tentative["row_boxes"],
                 "confidence": None, "method": "pp-structure",
                 "layout_source": "table-model"}
     except Exception as exc:
@@ -180,7 +181,9 @@ def segment_grid(photo: Photo):
     try:
         image = decode_photo(photo)
         result = detect_grid(image)
-        return {"engine": "OpenCV grid", "width": image.shape[1],
+        if not result["cells"]:
+            result = detect_text_bands(image)
+        return {"engine": "OpenCV grid" if result["cells"] else "OpenCV ink bands", "width": image.shape[1],
                 "height": image.shape[0], **result}
     except ImportError:
         raise HTTPException(status_code=503, detail="Install opencv-python-headless")
