@@ -139,3 +139,97 @@ td input[type=text]:focus{border-color:#5baab1;background:#fff}
   .legion-badge{display:none}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button{transition:none}}
+
+/* Analytics overview — shares Photo/Legion typography and color system. */
+.analytics-page{background:#f2f5f8;color:var(--text)}
+.analytics-page header{background:#16283d;color:#fff;padding:20px max(24px,calc((100vw - 1280px)/2));
+  display:flex;align-items:center;gap:26px;min-height:96px;border-bottom:3px solid #1f8b94}
+.analytics-page .analytics-brand{color:#b6e5e8;white-space:nowrap;font-size:14px;font-weight:750}
+.analytics-headline{flex:1}
+.analytics-headline h1{margin:2px 0;font-size:25px;font-weight:750;letter-spacing:-.7px;color:#fff}
+.analytics-eyebrow{font-size:10px;letter-spacing:1.6px;font-weight:800;color:#71cdd0}
+.analytics-page #state{font-size:12px;color:#d5e4eb;max-width:360px;text-align:right}
+.analytics-page main{max-width:1320px;margin:auto;padding:30px 24px 75px}
+.analytics-intro{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:14px}
+.analytics-intro h2{font-size:22px;letter-spacing:-.5px;font-weight:750;margin:0}
+.analytics-page .hint{color:#65798a;font-size:13px;line-height:1.55}
+.analytics-intro .hint{margin:6px 0 0;max-width:680px}
+.analytics-source{background:#e3f3f0;border:1px solid #c2e1da;padding:8px 13px;
+  border-radius:24px;color:#276b5a;font-size:12px;font-weight:680;white-space:nowrap}
+.analytics-page .filters{background:#fff;border:1px solid #dee7ed;padding:18px 20px;border-radius:14px;
+  box-shadow:var(--shadow);margin:19px 0;display:flex;gap:12px;align-items:end}
+.analytics-page .filters label{font-size:12px;color:#526b7e;font-weight:650;gap:6px}
+.analytics-page select{color:#233c51;background:#f9fbfc;border:1px solid #c9d9e4;border-radius:8px;
+  padding:10px 14px;min-height:42px}
+.analytics-page button{color:#155f73;background:#fff;border:1px solid #bcd1d9;
+  border-radius:9px;padding:10px 14px;cursor:pointer;min-height:42px;font-weight:690}
+.analytics-page button:hover{background:#eff8f7}
+.analytics-page #exportFleet{color:#fff;background:#155f73;border-color:#155f73;white-space:normal}
+.analytics-page #exportFleet:hover{background:#0b4c5d}
+.analytics-page .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:17px 0}
+.analytics-page .cards article{background:#fff;border:1px solid #dfe7ee;border-radius:14px;
+  padding:22px;box-shadow:var(--shadow);min-height:115px}
+.analytics-page .cards small{color:#667f91;font-size:12px;font-weight:670}
+.analytics-page .cards strong{color:#163d50;font-weight:780;font-size:clamp(23px,2.5vw,32px);
+  font-variant-numeric:tabular-nums}
+.analytics-page .panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:17px 0}
+.analytics-page .panels article{background:#fff;color:var(--text);border:1px solid #dde7ed;
+  border-radius:14px;padding:22px;box-shadow:var(--shadow);min-width:0}
+.analytics-page .panels .wide{grid-column:1/-1}
+.analytics-page h2{color:#20394b}
+.analytics-page .panels h2{font-size:16px;letter-spacing:-.2px;margin-bottom:14px}
+.analytics-page summary{color:#175f71;font-weight:700;cursor:pointer}
+.analytics-page .table-viewport{border:1px solid #dbe6ed;border-radius:10px}
+.analytics-page .fleet-table{min-width:690px}
+.analytics-page .fleet-table th{background:#f0f5f8;color:#586f7f;text-align:left;
+  border-bottom:1px solid #dbe6ed;font-size:12px;position:sticky;top:0}
+.analytics-page .fleet-table td{color:#253d4d;border-bottom:1px solid #edf1f5;padding:12px}
+.analytics-page .fleet-table tbody tr:nth-child(even){background:#f9fbfc}
+.analytics-page .fleet-table tbody tr:hover,
+.analytics-page .fleet-table tbody tr:focus{background:#e7f4f3}
+.analytics-page .fleet-table tbody tr:focus{outline:2px solid #2b9b9e;outline-offset:-2px}
+.analytics-page .chart{min-height:135px}
+.analytics-page .track{background:#e8eff3;height:13px;border-radius:5px}
+.analytics-page .fill{background:linear-gradient(90deg,#166d83,#27a4a7)}
+.analytics-page .barline span:first-child{color:#526a7e;width:126px}
+.analytics-page .barline b{color:#183d4e;font-variant-numeric:tabular-nums}
+.analytics-page .calendar{grid-template-columns:repeat(7,minmax(0,1fr))}
+.analytics-page .day{color:#253f54;border:1px solid rgba(31,110,124,.07);min-height:39px}
+.analytics-page .day.empty{color:#8799a8}
+.analytics-page #sourcePolicy{font-weight:620;color:#27586b}
+.analytics-page #auditNotice{border-left:3px solid #3295a2;background:#f0f9f8;
+  color:#32606b;padding:11px 13px;border-radius:7px}
+.analytics-page .review-list p{color:#556d81;border-bottom:1px solid #e6ebf0}
+.analytics-page .advanced-analytics{background:#fff;border:1px solid #dce5ed;
+  border-radius:13px;margin:16px 0;box-shadow:var(--shadow)}
+.analytics-page .advanced-analytics>summary{padding:16px 20px;font-size:14px}
+.analytics-page .advanced-analytics-body{padding:4px 20px 23px;border-top:1px solid #e5ebf1}
+.analytics-page .advanced-analytics-body .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+.analytics-page .task{border-top-color:#dce6ec}
+.analytics-page .task summary{color:#294b5c}
+.analytics-page .task small{color:#64778a}
+.analytics-page .meter{background:#dce8ee}
+.analytics-page .meter span{background:#15969c}
+@media(max-width:900px){
+ .analytics-page .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .analytics-page .panels{grid-template-columns:1fr}
+ .analytics-page .panels .wide{grid-column:1}
+ .analytics-page .filters{gap:10px}
+ .analytics-page .advanced-analytics-body .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+ .analytics-page header{padding:14px 16px;flex-wrap:wrap;gap:9px}
+ .analytics-page .analytics-headline h1{font-size:20px}
+ .analytics-page #state{max-width:none;width:100%;text-align:left}
+ .analytics-page main{padding:18px 12px 50px}
+ .analytics-page .analytics-intro{display:block}
+ .analytics-page .analytics-source{display:inline-flex;margin-top:12px}
+ .analytics-page .filters label{flex:1;min-width:130px}
+ .analytics-page .filters label select{width:100%}
+ .analytics-page .filters button{flex:1}
+ .analytics-page .cards{gap:9px}
+ .analytics-page .cards article{padding:15px;min-height:100px}
+ .analytics-page .cards strong{font-size:23px}
+ .analytics-page .panels article{padding:16px}
+ .analytics-page .advanced-analytics-body .cards{grid-template-columns:1fr 1fr}
+}
