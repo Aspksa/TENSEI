@@ -239,3 +239,11 @@ td input[type=text]:focus{border-color:#5baab1;background:#fff}
 .system-diagnostics .button{margin-top:10px;min-height:36px}
 #diagnosticsResults{font-size:12px;color:#345266;padding:8px 0}
 #diagnosticsResults p{margin:4px 0;padding:5px 0;border-bottom:1px solid #e5ebf1}
+
+.advanced-photo-tools{margin:9px 0 14px;background:#fff;border:1px solid #dde9ec;border-radius:10px;padding:10px 13px}
+.advanced-photo-tools>summary{font-size:12px;font-weight:700;color:#286a79;cursor:pointer}
+.advanced-photo-tools[open]{display:grid;gap:8px}
+.advanced-photo-tools .button{width:100%;margin:0!important;text-align:left}
+.advanced-photo-tools #rapidOCRStatus{margin:1px 0}
+.advanced-photo-tools .perspective-result{margin:5px 0}
+#previewSurface{margin-top:9px}
