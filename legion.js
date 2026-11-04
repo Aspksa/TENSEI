@@ -19,7 +19,7 @@ function showPage(name){
   }
   document.title=(legion?'Легион · отчёты':analytics?'Статистика':'Распознавание фото')+' — TENSEI';
   if(legion)void Promise.all([refreshBase(),refreshReports()]).catch(e=>notice(e.message,'error'));
-  document.dispatchEvent(new CustomEvent('tensei:page',{detail:{page:name}}));
+  document.dispatchEvent(new window.CustomEvent('tensei:page',{detail:{page:name}}));
 }
 $('navPhoto').onclick=()=>showPage('photo');
 $('navLegion').onclick=()=>showPage('legion');
@@ -102,7 +102,7 @@ $('legionVehicleForm').onsubmit=async event=>{
   setBusy(true);
   try{
     await api('vehicle',{plate,model,driver});
-    window.dispatchEvent(new Event('tensei:legion-updated'));
+    window.dispatchEvent(new window.Event('tensei:legion-updated'));
     $('legionVehicleForm').reset();
     await refreshBase();
     if(state.importId)await restorePreview(state.importId);
@@ -199,7 +199,7 @@ $('legionCsvFile').onchange=async event=>{
   $('legionImportStatus').textContent='Читаю '+file.name+'…';
   try{
     const result=await api('import-csv',{file:await readAsDataURL(file),name:file.name});
-    window.dispatchEvent(new Event('tensei:legion-updated'));
+    window.dispatchEvent(new window.Event('tensei:legion-updated'));
     drawPreview(result);
     notice('CSV прочитан: '+result.count+' рейсов, '+(result.groups?.length||0)+
       ' товаров. '+(result.summary?.unknownVehicles?.length||0)+' автомобилей с неполными данными.',
