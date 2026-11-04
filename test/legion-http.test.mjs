@@ -176,3 +176,42 @@ test('photo draft and Legion CSV produce a read-only reconciled ledger',async()=
     assert.equal((await r.json()).cloudCalls,0);
   }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
 });
+
+test('unified fleet API combines repeated Legion imports and photo evidence without double counting',async()=>{
+  const svc=await serverStart();
+  try{
+    const csv='ТС;Товар;Дата оформления;Нетто;№\\nА905УО;Скала;05.11.2026 12:30;27000;1001\\n';
+    const payload={name:'sample.csv',file:'data:text/csv;base64,'+Buffer.from(csv).toString('base64')};
+    let res=await post(svc.url,'import-csv',payload);
+    assert.equal(res.status,200,JSON.stringify(res.body));
+    res=await post(svc.url,'import-csv',payload);
+    assert.equal(res.status,200,JSON.stringify(res.body));
+    let r=await fetch(svc.url+'/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({rows:[{tripDate:'2026-11-05',time:'12:30',vehicle:'А905УО',
+        net:27000,reviewed:true}]})});
+    assert.equal(r.status,200);
+    r=await fetch(svc.url+'/api/fleet/stats');
+    assert.equal(r.status,200);
+    let stats=await r.json();
+    assert.equal(stats.totals.trips,1);
+    assert.equal(stats.totals.netKg,27000);
+    assert.equal(stats.audit.copyDuplicates,1);
+    assert.equal(stats.audit.matchedPhotos,1);
+    assert.equal(stats.catalog.vehicles[0],'А905УО');
+    assert.equal(stats.sourcePolicy,'csv-authoritative');
+    r=await fetch(svc.url+'/api/fleet/stats?vehicle=С301СВ');
+    stats=await r.json();
+    assert.equal(stats.totals.trips,0);
+    r=await fetch(svc.url+'/api/fleet/export');
+    assert.equal(r.status,200);
+    const excel=new ExcelJS.Workbook();
+    await excel.xlsx.load(Buffer.from(await r.arrayBuffer()));
+    assert.equal(excel.getWorksheet('Автомобили').getCell('E2').value,27000);
+    assert.ok(excel.getWorksheet('На проверку'));
+    r=await fetch(svc.url+'/analytics');
+    assert.equal(r.status,200);
+    const markup=await r.text();
+    assert.match(markup,/id="fleetTable"/);
+    assert.match(markup,/id="exportFleet"/);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});
