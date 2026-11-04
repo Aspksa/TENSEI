@@ -212,7 +212,7 @@ $('settingsForm').addEventListener('submit',async event=>{
     const result=await api('settings',{
       key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked,
       enhance:$('enhance').checked,cropRecovery:$('cropRecovery').checked,
-      paddle:$('paddle').checked,chandra:$('chandra').checked
+      paddle:$('paddle').checked,chandra:$('chandra').checked,mineru:$('mineru').checked
     });
     state.hasKey=result.hasKey;
     $('apiKey').value='';
@@ -382,7 +382,22 @@ async function refreshTasks(){
     const meta=document.createElement('small');
     meta.textContent=task.status==='done'?'Готово · '+(task.rowCount||0)+' строк'+(task.model?' · '+task.model:''):
       task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
-    item.append(name,meta);box.append(item);
+    item.append(name,meta);
+    if(task.mineruTask?.taskId){
+      const action=document.createElement('button');action.className='button button-outline';
+      action.type='button';action.textContent='Статус MinerU';
+      action.onclick=async()=>{
+        action.disabled=true;
+        try{
+          const state=await api('mineru/'+encodeURIComponent(task.mineruTask.taskId),undefined,'GET');
+          meta.textContent=(meta.textContent||'')+' · MinerU: '+state.status;
+          action.textContent='Обновить MinerU';
+        }catch(e){meta.textContent=(meta.textContent||'')+' · MinerU: '+e.message}
+        finally{action.disabled=false}
+      };
+      item.append(action);
+    }
+    box.append(item);
   }
 }
 async function refreshTemplates(selected){
@@ -446,6 +461,7 @@ async function initialize(){
     $('cropRecovery').checked=cfg.cropRecovery!==false;
     $('paddle').checked=cfg.paddle===true;
     $('chandra').checked=cfg.chandra===true;
+    $('mineru').checked=cfg.mineru===true;
     state.hasKey=Boolean(cfg.hasKey);
     setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
     $('settingsHelp').textContent=cfg.hasKey
