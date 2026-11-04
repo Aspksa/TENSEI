@@ -49,57 +49,6 @@
       </div>
       <div id="notice" class="notice" role="alert" aria-live="polite" hidden></div>
       <div class="steps-grid">
-        <section id="settings" class="card card-settings">
-          <details id="settingsDetails">
-            <summary class="card-heading">
-              <span class="step">⚙</span>
-              <span class="card-heading-text"><strong>Настройки обработки</strong><small>Открывайте при первой настройке или для диагностики</small></span>
-              <span class="expand-icon" aria-hidden="true">⌄</span>
-            </summary>
-            <div class="card-body">
-              <form id="settingsForm" novalidate>
-                <div class="field-row">
-                  <label class="field">
-                    <span>API-ключ</span>
-                    <input id="apiKey" type="password" autocomplete="new-password" placeholder="Вставьте API-ключ Cloud.ru" spellcheck="false">
-                  </label>
-                  <label class="field model-field">
-                    <span>Модель</span>
-                    <select id="model">
-                      <option value="qwen/qwen3-vl-235b-a22b-instruct">Qwen3 VL 235B — основная</option>
-                      <option value="qwen/qwen3-vl-30b-a3b-instruct">Qwen3 VL 30B — экономичная</option>
-                      <option value="qwen/qwen3-vl-8b-instruct">Qwen3 VL 8B — быстрая</option>
-                      <option value="Qwen/Qwen3.5-397B-A17B">Qwen3.5 397B — внутренняя</option>
-                      <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — внутренняя</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="settings-bottom">
-                  <label class="inline-check"><input type="checkbox" id="fallback" checked> Пробовать резервную модель при ошибке 404</label>
-                  <div class="actions">
-                    <button class="button button-primary" id="saveSettings" type="submit">Сохранить</button>
-                    <button class="button button-outline" id="checkConnection" type="button">Проверить подключение</button>
-                  </div>
-                </div>
-                <div class="field-row"><label class="field"><span>Режим обработки ИИ</span><select id="costMode"><option value="auto">Авто — локально + Cloud.ru по необходимости</option><option value="off">Выкл. — старый режим</option><option value="economy">Экономный — Qwen VL 8B</option><option value="balanced">Баланс — Qwen VL 30B</option><option value="quality">Точный — основная модель</option></select></label><label class="field"><span>Лимит облачных запросов на фото</span><select id="maxCloudCalls"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label></div><p class="help">Похожие фотографии только помечаются: их нельзя безопасно считать дублями без проверки чисел. Локальные OCR-модули работают, если установлены отдельно.</p><details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
-<div class="advanced-options">
-<label class="inline-check"><input id="autoPipeline" type="checkbox" checked> Автоматическая локальная проверка геометрии и текста (при наличии сервисов)</label>
-<label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
-<label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
-<label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
-<label class="inline-check"><input id="cvPreprocess" type="checkbox"> OpenCV — проверка перспективы (предпросмотр без замены оригинала)</label>
-<label class="inline-check"><input id="gridSegmentation" type="checkbox"> OpenCV — точная сетка строк и ячеек (локально, без Cloud.ru)</label>
-<label class="inline-check"><input id="localText" type="checkbox"> PP-OCRv6 — локальное чтение строк (не подменяет Cloud.ru)</label>
-<label class="inline-check"><input id="localVl" type="checkbox"> PaddleOCR-VL — экспериментальное локальное понимание (может требовать GPU)</label>
-<label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
-<label class="inline-check"><input id="mineru" type="checkbox"> MinerU Tasks 4.1 — отдельная задача разбора фото (требуется локальный MinerU, дополнительная нагрузка)</label>
-</div></details>
-<p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
-                <div id="connectionDetails" class="diagnostic" role="status" aria-live="polite" hidden></div>
-              </form>
-            </div>
-          </details>
-        </section>
         <section class="card card-upload" id="upload">
           <div class="card-heading static-heading">
             <span class="step">1</span>
@@ -179,6 +128,57 @@
         <summary><span>Ошибки и сомнительные записи</span><span id="auditCount" class="count-chip">0</span></summary>
         <div id="auditList" class="audit-list"></div>
       </details>
+        <section id="settings" class="card card-settings">
+          <details id="settingsDetails">
+            <summary class="card-heading">
+              <span class="step">⚙</span>
+              <span class="card-heading-text"><strong>Настройки обработки</strong><small>Открывайте при первой настройке или для диагностики</small></span>
+              <span class="expand-icon" aria-hidden="true">⌄</span>
+            </summary>
+            <div class="card-body">
+              <form id="settingsForm" novalidate>
+                <div class="field-row">
+                  <label class="field">
+                    <span>API-ключ</span>
+                    <input id="apiKey" type="password" autocomplete="new-password" placeholder="Вставьте API-ключ Cloud.ru" spellcheck="false">
+                  </label>
+                  <label class="field model-field">
+                    <span>Модель</span>
+                    <select id="model">
+                      <option value="qwen/qwen3-vl-235b-a22b-instruct">Qwen3 VL 235B — основная</option>
+                      <option value="qwen/qwen3-vl-30b-a3b-instruct">Qwen3 VL 30B — экономичная</option>
+                      <option value="qwen/qwen3-vl-8b-instruct">Qwen3 VL 8B — быстрая</option>
+                      <option value="Qwen/Qwen3.5-397B-A17B">Qwen3.5 397B — внутренняя</option>
+                      <option value="Qwen/Qwen3.6-35B-A3B">Qwen3.6 35B — внутренняя</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="settings-bottom">
+                  <label class="inline-check"><input type="checkbox" id="fallback" checked> Пробовать резервную модель при ошибке 404</label>
+                  <div class="actions">
+                    <button class="button button-primary" id="saveSettings" type="submit">Сохранить</button>
+                    <button class="button button-outline" id="checkConnection" type="button">Проверить подключение</button>
+                  </div>
+                </div>
+                <div class="field-row"><label class="field"><span>Режим обработки ИИ</span><select id="costMode"><option value="auto">Авто — локально + Cloud.ru по необходимости</option><option value="off">Выкл. — старый режим</option><option value="economy">Экономный — Qwen VL 8B</option><option value="balanced">Баланс — Qwen VL 30B</option><option value="quality">Точный — основная модель</option></select></label><label class="field"><span>Лимит облачных запросов на фото</span><select id="maxCloudCalls"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label></div><p class="help">Похожие фотографии только помечаются: их нельзя безопасно считать дублями без проверки чисел. Локальные OCR-модули работают, если установлены отдельно.</p><details id="advancedOcr" class="advanced-settings"><summary>Дополнительные режимы распознавания</summary>
+<div class="advanced-options">
+<label class="inline-check"><input id="autoPipeline" type="checkbox" checked> Автоматическая локальная проверка геометрии и текста (при наличии сервисов)</label>
+<label class="inline-check"><input id="enhance" type="checkbox" checked> Улучшать освещение и контраст</label>
+<label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
+<label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
+<label class="inline-check"><input id="cvPreprocess" type="checkbox"> OpenCV — проверка перспективы (предпросмотр без замены оригинала)</label>
+<label class="inline-check"><input id="gridSegmentation" type="checkbox"> OpenCV — точная сетка строк и ячеек (локально, без Cloud.ru)</label>
+<label class="inline-check"><input id="localText" type="checkbox"> PP-OCRv6 — локальное чтение строк (не подменяет Cloud.ru)</label>
+<label class="inline-check"><input id="localVl" type="checkbox"> PaddleOCR-VL — экспериментальное локальное понимание (может требовать GPU)</label>
+<label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
+<label class="inline-check"><input id="mineru" type="checkbox"> MinerU Tasks 4.1 — отдельная задача разбора фото (требуется локальный MinerU, дополнительная нагрузка)</label>
+</div></details>
+<p class="help" id="settingsHelp">Ключ сохраняется на вашем диске, а фотографии отправляются в Cloud.ru. Для проверки подключения используется отдельный запрос.</p>
+                <div id="connectionDetails" class="diagnostic" role="status" aria-live="polite" hidden></div>
+              </form>
+            </div>
+          </details>
+        </section>
       <footer>Подтверждайте сомнительные цифры по оригиналу. ИИ не гарантирует точного чтения почерка.</footer>
     </section>
     <section class="workspace-page legion-workspace" id="legionWorkspace" hidden>
