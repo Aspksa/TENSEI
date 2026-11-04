@@ -14,6 +14,7 @@ test('same photo similarity hash is deterministic; different pages never auto-me
 test('economy chooses small then medium; local validator never fabricates values',()=>{
   assert.equal(selectedModels('economy','unused').primary,'qwen/qwen3-vl-8b-instruct');
   assert.equal(selectedModels('balanced','unused').primary,'qwen/qwen3-vl-30b-a3b-instruct');
+  assert.equal(selectedModels('auto','unused').primary,'qwen/qwen3-vl-30b-a3b-instruct');
   const rows=[{vehicle:'A123',net:30000,gross:49000,tare:19000},{vehicle:'',net:60000}];
   assert.equal(validateWeights(rows).flagged,1);
   assert.equal(rows[1].net,60000);
