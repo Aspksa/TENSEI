@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {handwritingCandidates,plateCandidates,findCrossSourceDuplicates,
-  detectUnruledColumns,detectEditMarks,reconcileRows,reviewPriority} from '../lib/photo-review-intelligence.mjs';
+  detectUnruledColumns,detectEditMarks,reconcileRows,reviewPriority,tentativeCellsFromInk} from '../lib/photo-review-intelligence.mjs';
 
 test('local handwritten numbers are candidates and never verified weights',()=>{
   const c=handwritingCandidates([{bbox:[.1,.2,.3,.4],text:'12345',score:.89},
@@ -50,4 +50,12 @@ test('cross-source suspected duplicate must include matching date and values',()
   assert.equal(findCrossSourceDuplicates(same,prior).length,1);
   assert.equal(findCrossSourceDuplicates(different,prior).length,0);
   assert.equal(findCrossSourceDuplicates([{...prior[0],tripDate:''}],prior).length,0);
+});
+
+test('tentative unruled cells require observed axes and are never verified',()=>{
+  const columns={columns:[{center:.2,observations:5},{center:.7,observations:5}]};
+  const result=tentativeCellsFromInk([[0,.1,1,.2],[0,.3,1,.4]],columns);
+  assert.equal(result.boxes.length,4);
+  assert.equal(result.verified,false);
+  assert.equal(tentativeCellsFromInk([[0,.1,1,.2]],columns).boxes.length,0);
 });
