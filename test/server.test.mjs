@@ -42,6 +42,9 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     const added=await r.json();assert.ok(added.template.id.startsWith('user-'));
     r=await fetch(url+'/api/templates');assert.ok((await r.json()).templates.some(x=>x.id===added.template.id));
     r=await fetch(url+'/api/tasks');assert.equal(r.status,200);assert.deepEqual((await r.json()).tasks,[]);
+    r=await fetch(url+'/analytics');assert.equal(r.status,200);assert.match(await r.text(),/Аналитика перевозок/);
+    r=await fetch(url+'/analytics.js');assert.equal(r.status,200);
+    r=await fetch(url+'/api/photo-report/0123456789abcdef01234567');assert.equal(r.status,404);
 
     r=await fetch(url+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({key:'test-api-key-not-real',model:'Qwen/Qwen3.5-397B-A17B',fallback:true})});

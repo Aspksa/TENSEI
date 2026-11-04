@@ -385,6 +385,16 @@ async function refreshTasks(){
     meta.textContent=task.status==='done'?'Готово · '+(task.rowCount||0)+' строк'+(task.model?' · '+task.model:''):
       task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
     item.append(name,meta);
+    if(task.status==='done'&&task.reportId){
+      const report=document.createElement('button');report.type='button';report.className='button button-outline';
+      report.textContent='Отчёт JSON';report.onclick=async()=>{
+        try{const record=await api('photo-report/'+task.reportId,undefined,'GET');
+          const blob=new Blob([JSON.stringify(record,null,2)],{type:'application/json'});
+          const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;
+          a.download='TENSEI-photo-'+task.reportId+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
+        }catch(e){status('Не удалось загрузить отчёт: '+e.message,'error')}
+      };item.append(report);
+    }
     if(task.mineruTask?.taskId){
       const action=document.createElement('button');action.className='button button-outline';
       action.type='button';action.textContent='Статус MinerU';

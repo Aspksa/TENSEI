@@ -21,6 +21,7 @@ const draftPath=path.join(dataDir,'draft.json');
 const tasksPath=path.join(dataDir,'tasks.json');
 const templatesPath=path.join(dataDir,'templates.json');
 const sourceDir=path.join(dataDir,'sources');
+const photoReportsDir=path.join(dataDir,'photo-reports');
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
@@ -88,7 +89,8 @@ async function recognize(input){
   if(previous&&!input.force){
     return {rows:previous.rows,sourceId:previous.sourceId,cached:true,model:previous.model,
       warnings:previous.warnings||[],quality:previous.quality||null,layout:previous.layout||null,
-      comparison:previous.comparison||null,mineruTask:previous.mineruTask||null};
+      comparison:previous.comparison||null,mineruTask:previous.mineruTask||null,
+      usage:previous.usage||null,reportId:previous.id||null};
   }
   const id=createHash('sha256').update(hash+Date.now()).digest('hex').slice(0,24);
   const task={id,name:String(input.name||'Фото').slice(0,160),hash,templateId:template.id,
@@ -100,13 +102,25 @@ async function recognize(input){
   try{
     const result=await processPhoto({image:input.image,name:task.name,cfg,template,
       paddleUrl:process.env.TENSEI_PADDLE_URL,chandraUrl:process.env.TENSEI_CHANDRA_URL,
-      mineruUrl:process.env.TENSEI_MINERU_URL,mineruKey:process.env.TENSEI_MINERU_KEY});
+      mineruUrl:process.env.TENSEI_MINERU_URL,mineruKey:process.env.TENSEI_MINERU_KEY,
+      progress});
     await fs.mkdir(sourceDir,{recursive:true});
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
-      comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts};
+      comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
+      usage:result.usage||null,fallbackFrom:result.fallbackFrom||null,reportId:id};
+    // One immutable logical report per processing task; cached requests reuse it.
+    await fs.mkdir(photoReportsDir,{recursive:true});
+    await writeJson(path.join(photoReportsDir,id+'.json'),{
+      id,sourceId:result.sourceId,name:task.name,startedAt:task.startedAt,
+      finishedAt:new Date().toISOString(),status:'done',model:result.model,
+      fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
+      usage:result.usage||null,trace:[...trace],warnings:result.warnings,
+      quality:result.quality,rows:result.rows,
+      files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
+    });
     await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
     return output;
   }catch(e){
@@ -204,6 +218,12 @@ const server=http.createServer(async(req,res)=>{
     }
     if(req.method==='GET'&&url.pathname==='/api/tasks'){
       return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
+    }
+    const photoReport=/^\/api\/photo-report\/([0-9a-f]{24})$/.exec(url.pathname);
+    if(req.method==='GET'&&photoReport){
+      const file=path.join(photoReportsDir,photoReport[1]+'.json');
+      try{return send(res,200,JSON.parse(await fs.readFile(file,'utf8')))}
+      catch(e){if(e.code==='ENOENT')return send(res,404,{error:'Отчёт не найден'});throw e}
     }
     if(req.method==='GET'&&url.pathname==='/api/templates'){
       return send(res,200,{templates:[...BUILTIN_TEMPLATES,...await savedTemplates()]});
