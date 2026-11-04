@@ -37,3 +37,7 @@ a{color:var(--primary)}.app{min-height:100vh}.topbar{background:#fff;border-bott
 tbody tr[data-row]{cursor:pointer}
 tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 @media(max-width:630px){.template-bar{margin:0 16px 13px;display:block}.template-bar>.field{margin-bottom:10px}.template-form input:nth-child(2){min-width:100%}}
+
+#detectGrid{align-self:flex-start;margin-bottom:8px;font-size:12px}
+#gridOverlay{position:absolute;inset:0;pointer-events:none;z-index:1}
+#gridOverlay .grid-cell{position:absolute;box-sizing:border-box;border:1px solid rgba(0,116,235,.68);background:rgba(0,116,235,.06)}

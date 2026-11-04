@@ -88,6 +88,7 @@
 <label class="inline-check"><input id="cropRecovery" type="checkbox" checked> Если ответ пустой, читать фрагменты (дополнительные запросы)</label>
 <label class="inline-check"><input id="paddle" type="checkbox"> PaddleOCR — разметка таблицы (локальный сервер)</label>
 <label class="inline-check"><input id="cvPreprocess" type="checkbox"> OpenCV — проверка перспективы (предпросмотр без замены оригинала)</label>
+<label class="inline-check"><input id="gridSegmentation" type="checkbox"> OpenCV — точная сетка строк и ячеек (локально, без Cloud.ru)</label>
 <label class="inline-check"><input id="localText" type="checkbox"> PP-OCRv6 — локальное чтение строк (не подменяет Cloud.ru)</label>
 <label class="inline-check"><input id="localVl" type="checkbox"> PaddleOCR-VL — экспериментальное локальное понимание (может требовать GPU)</label>
 <label class="inline-check"><input id="chandra" type="checkbox"> Chandra OCR 2 — второе чтение (локальный сервер)</label>
@@ -126,9 +127,9 @@
               <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
-              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
+              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <div class="preview-surface" id="previewSurface">
-                <img id="previewImage" alt="Выбранная фотография" hidden><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
+                <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>
               </div>
             </div>

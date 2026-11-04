@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
 import uvicorn
+from grid_geometry import detect_grid
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
@@ -117,8 +118,18 @@ def analyze(photo: Photo):
                 value = box_to_xyxy(item, w, h)
                 if value:
                     cells.append(value)
+        geometry = detect_grid(image)
+        if geometry["cells"]:
+            # Clear ruled grids give more reproducible cell positions than
+            # spatial grouping of detached handwriting characters.
+            return {"engine": "OpenCV grid + PP-StructureV3",
+                    "width": w, "height": h, **geometry,
+                    "paddle_cell_count": len(cells),
+                    "layout_source": "ruling"}
         return {"engine": "PP-StructureV3", "width": w, "height": h,
-                "cells": cells[:800], "row_boxes": cluster_rows(cells)}
+                "cells": cells[:800], "row_boxes": cluster_rows(cells),
+                "confidence": None, "method": "pp-structure",
+                "layout_source": "table-model"}
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
@@ -163,6 +174,23 @@ def model_vl():
     return _vl_model
 
 
+@app.post("/segment")
+def segment_grid(photo: Photo):
+    """CPU-only OpenCV segmentation, no Paddle runtime or model downloads."""
+    try:
+        image = decode_photo(photo)
+        result = detect_grid(image)
+        return {"engine": "OpenCV grid", "width": image.shape[1],
+                "height": image.shape[0], **result}
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Install opencv-python-headless")
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=422, detail=str(exc)[:350])
+
+
+
 @app.post("/ocr")
 def recognize_lines(photo: Photo):
     """Advisory local text lines, not a verified weighbridge table."""
@@ -175,11 +203,44 @@ def recognize_lines(photo: Photo):
             report = report()
         report = report.get("res", report)
         lines = []
-        for text, score in zip(report.get("rec_texts") or [],
-                               report.get("rec_scores") or []):
-            if isinstance(text, str):
-                lines.append({"text": text[:200], "score": round(float(score), 4)})
-        return {"engine": "PP-OCRv6", "lines": lines[:400], "verified": False}
+        texts = report.get("rec_texts") or []
+        scores = report.get("rec_scores") or []
+        boxes = report.get("rec_boxes")
+        if boxes is None:
+            boxes = report.get("rec_polys")
+        if boxes is None:
+            boxes = []
+        height, width = image.shape[:2]
+        for index, text in enumerate(texts[:400]):
+            if not isinstance(text, str):
+                continue
+            score = float(scores[index]) if index < len(scores) else None
+            bbox = box_to_xyxy(boxes[index], width, height) if index < len(boxes) else None
+            lines.append({"text": text[:200],
+                          "score": round(score, 4) if score is not None else None,
+                          "bbox": bbox})
+        # Match recognized fragments to explicitly detected cell boundaries.
+        # Unlocated OCR text must never be assigned by visual ordering.
+        grid = detect_grid(image)
+        matches = []
+        for i, box in enumerate(grid["cells"][:800]):
+            inside = []
+            for line in lines:
+                b = line["bbox"]
+                if b is None:
+                    continue
+                cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+                if box[0] <= cx <= box[2] and box[1] <= cy <= box[3]:
+                    inside.append(line)
+            if inside:
+                inside.sort(key=lambda item: (item["bbox"][1], item["bbox"][0]))
+                matches.append({"cellIndex": i, "bbox": box,
+                                "text": " ".join(item["text"] for item in inside)[:250],
+                                "confidence": round(min(
+                                    (item["score"] or 0) for item in inside), 4),
+                                "verified": False})
+        return {"engine": "PP-OCRv6 + OpenCV", "lines": lines,
+                "recognized_cells": matches[:400], "verified": False}
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
