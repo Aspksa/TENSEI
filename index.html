@@ -81,6 +81,11 @@
             <div class="preview">
               <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <button id="localRead" class="button button-outline" type="button">Прочитать ячейки без Cloud.ru</button>
+              <button id="perspectivePreview" class="button button-outline" type="button">Выровнять лист · предпросмотр</button>
+              <div id="perspectiveResult" class="perspective-result" hidden>
+                <p id="perspectiveNote" class="help">Исправленная геометрия не заменяет исходник автоматически.</p>
+                <img id="perspectiveImage" alt="Экспериментальный вариант с исправленной перспективой">
+              </div>
               <div id="localReadResults" class="local-read-results" hidden></div>
               <div class="preview-surface" id="previewSurface">
                 <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
@@ -118,7 +123,7 @@
           <label class="searchbox"><span class="sr-only">Поиск по таблице</span><input id="search" type="search" placeholder="Поиск по номеру, водителю, примечанию…"></label>
           <label class="inline-check"><input id="onlyIssues" type="checkbox"> Только с замечаниями</label>
         </div>
-        <div class="table-scroll">
+        <div class="review-split"><div class="table-scroll">
           <table aria-label="Распознанные записи журнала">
             <thead><tr>
               <th>№</th><th>Время</th><th>Автомобиль</th><th>Водитель</th><th>Тара, кг</th><th>Брутто, кг</th><th>Нетто, кг</th><th>Примечание</th><th>Сверено</th><th>Проверка</th><th></th>
@@ -127,6 +132,13 @@
           </table>
           <div id="emptyTable" class="empty">Пока нет записей. Загрузите фотографию или добавьте строку вручную.</div>
         </div>
+        <aside id="reviewSidePanel" class="review-side-panel" aria-label="Сверка фотографии с таблицей">
+          <strong>Фотография рядом с таблицей</strong>
+          <p id="reviewSideStatus" class="help">Выберите строку, чтобы сверить её с оригиналом.</p>
+          <img id="reviewSideImage" alt="Исходная фотография для проверки строки" hidden>
+          <img id="reviewSideCrop" alt="Увеличенная область выбранной строки" hidden>
+          <p class="help">Координаты OCR ориентировочные; подтверждайте цифры по оригиналу.</p>
+        </aside></div>
         <div class="result-footer">
           <span id="tableCount">0 записей</span>
           <button id="approveMemory" class="button button-outline" type="button">Запомнить подтверждённые ТС и водителей</button>
