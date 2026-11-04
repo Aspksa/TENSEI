@@ -21,7 +21,7 @@ import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 import {reconcilePhotoCsv,timeSequenceWarnings} from './lib/transport-reconcile.mjs';
-import {rapidHealth,analyzeRapidOCR} from './lib/rapidocr.mjs';
+import {rapidHealth,analyzeRapidOCR,analyzeRapidDigitVariants} from './lib/rapidocr.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
@@ -334,6 +334,20 @@ const server=http.createServer(async(req,res)=>{
       if(rest.length>=24)throw Error('Максимум 25 пользовательских шаблонов');
       await writeJson(templatesPath,[...rest,t]);
       return send(res,200,{ok:true,template:t});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/review-angle'){
+      const input=await json(req),id=String(input.sourceId||'');
+      if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор исходного фото');
+      const bbox=fixBox(input.bbox);
+      if(!bbox)throw Error('Выберите ячейку для локального чтения');
+      const health=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
+      if(!health.available)throw Error('RapidOCR CPU не запущен. Установите необязательный локальный модуль.');
+      return send(res,200,await photoQueue.enqueue(async()=>{
+        const bytes=await fs.readFile(path.join(sourceDir,id+'.jpg'));
+        const original='data:image/jpeg;base64,'+bytes.toString('base64');
+        const crop=await cropBox(original,bbox,{width:900,quality:90});
+        return analyzeRapidDigitVariants(crop,{url:process.env.TENSEI_RAPIDOCR_URL});
+      }));
     }
     if(req.method==='POST'&&url.pathname==='/api/review-cell'){
       const input=await json(req),id=String(input.sourceId||''),field=String(input.field||'');
