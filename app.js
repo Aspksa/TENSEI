@@ -662,6 +662,19 @@ async function showRowCrop(sourceId,bbox,label='Строка'){
     note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
   }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
 }
+$('reviewAngleLocal').onclick=async()=>{
+  const bbox=reviewCells[Number($('cellPicker').value)];
+  if(!bbox||!reviewSourceId)return status('Выберите ячейку на фото.','error');
+  const button=$('reviewAngleLocal'),target=$('cloudCellReading');
+  button.disabled=true;target.textContent='RapidOCR CPU: читаю 0° / -8° / +8° без Cloud.ru…';
+  try{
+    const answer=await api('review-angle',{sourceId:reviewSourceId,bbox});
+    target.textContent=answer.variants.map(v=>v.rotationDegrees+'°: '+
+      (v.readings.join(' / ')||'непрочитано')).join(' · ')+
+      '. Это неподтверждённые варианты; сверьте с исходником.';
+  }catch(e){target.textContent='Локальная проверка недоступна: '+e.message}
+  finally{button.disabled=false}
+};
 $('reviewCellCloud').onclick=async()=>{
   const bbox=reviewCells[Number($('cellPicker').value)];
   if(!bbox||!reviewSourceId)return status('Сначала выберите ячейку на исходном фото.','error');
