@@ -15,7 +15,7 @@ import {analyzeLocalGrid} from './lib/optional-ocr.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
-import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from './lib/document-intelligence.mjs';
+import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 import {startFolderWatcher} from './lib/folder-watch.mjs';
 
@@ -121,10 +121,12 @@ async function recognize(input){
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const similar=(await tasks()).filter(t=>t.status==='done'&&t.imageHash&&hashDistance(t.imageHash,result.imageHash)<=4).slice(0,3).map(t=>({id:t.id,name:t.name}));
-    const confidence=confidenceReport(result.rows);
-    const documentType=classifyDocument(result.rows,template);
-    const memoryHints=approvedHints(result.rows,await approvedMemory());
-    const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+    const dictionary=await approvedMemory();
+    const memoryHints=approvedHints(result.rows,dictionary);
+    const verifiedRows=markUnknownVehicles(result.rows,dictionary);
+    const confidence=confidenceReport(verifiedRows);
+    const documentType=classifyDocument(verifiedRows,template);
+    const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
       confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
@@ -138,7 +140,7 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,layout:result.layout,rows:result.rows,confidence,documentType,memoryHints,
+      quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,
       localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
