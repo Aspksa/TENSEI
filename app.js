@@ -1,3 +1,4 @@
+import {humorCategory,createHumorRotator} from './humor-messages.js';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
 const columns=['time','vehicle','driver','tare','gross','net','note'];
@@ -341,12 +342,23 @@ $('recognize').onclick=async()=>{
   const batch=[...state.queue];state.queue=[];
   const failed=[],failures=new Set();
   let done=0,usedModel='';
-  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
+  let activePhase='Обработка';
+  const nextJoke=createHumorRotator();
+  const drawJoke=()=>{
+    const output=$('humorCaption');
+    if(!$('humorEnabled').checked){output.hidden=true;return}
+    output.textContent=nextJoke(humorCategory(activePhase));
+    output.hidden=false;
+  };
+  drawJoke();
+  const jokeTimer=setInterval(drawJoke,4500);
+  const poll=setInterval(async()=>{try{const response=await api('tasks',undefined,'GET');const active=(response.tasks||[]).find(t=>t.status==='processing');if(active){activePhase=active.phase||'Обработка';const percent=Math.min(95,Math.round((done+(active.progress||10)/100)*100/batch.length));$('progressBar').style.width=percent+'%';$('progressStatus').textContent='Фото '+(done+1)+' из '+batch.length+' · '+(active.phase||'Обработка')+' · '+(active.model||'модель уточняется');}}catch{}},1200);
   try{
     for(const [index,file] of batch.entries()){
       $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
       $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
       showPreview(file);
+      activePhase='Подготовка фотографии';drawJoke();
       try{
         const result=await api('recognize',{image:await fileData(file),name:file.name,
           templateId:$('templateSelect').value,force:$('forceReprocess')?.checked===true});
@@ -374,6 +386,8 @@ $('recognize').onclick=async()=>{
     else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
   }finally{
     clearInterval(poll);
+    clearInterval(jokeTimer);
+    $('humorCaption').hidden=true;
     state.busy=false;$('addRow').disabled=false;$('clearData').disabled=false;drawQueue();updateSummary();if(state.rows.length)queueSave();
   }
 };
