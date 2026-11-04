@@ -1,211 +1,371 @@
-const el=id=>document.getElementById(id);
-const labels={workspace:'Распознавание фотографий',journal:'Реестр взвешиваний',audit:'Проверка ошибок',settings:'Подключение Cloud.ru'};
-let records=[],files=[],busy=false,saveTimer=null,rev=0,previewUrl=null;
-const fields=['time','vehicle','driver','tare','gross','net','note'];
-const n=x=>x===null||x===undefined||String(x).trim()===''?null:Number(String(x).trim().replace(/\s/g,'').replace(',','.'));
-function setNotice(message,type='info'){el('notice').hidden=!message;el('notice').textContent=message||'';el('notice').dataset.type=type}
-async function request(route,body,method='POST'){
-  const opt={method,headers:{}};
-  if(body!==undefined){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
-  const res=await fetch('/api/'+route,opt);
-  if(route==='export'&&res.ok)return res.blob();
-  let json;try{json=await res.json()}catch{throw Error('Сервер вернул неожиданный ответ')}
-  if(!res.ok)throw Error(json.error||'Ошибка запроса');
-  return json;
+const $=id=>document.getElementById(id);
+const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
+const columns=['time','vehicle','driver','tare','gross','net','note'];
+const titles={time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
+
+function status(message,kind='info'){
+  const box=$('notice');
+  box.hidden=!message;
+  box.textContent=String(message||'');
+  box.className='notice '+kind;
 }
-function section(id){
-  document.querySelectorAll('.page').forEach(x=>x.hidden=x.id!==id);
-  document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.page===id));
-  el('pageTitle').textContent=labels[id];
-  if(id==='journal')renderTable();
-  if(id==='audit')renderAudit();
+async function api(route,data,method='POST'){
+  const options={method,headers:{}};
+  if(data!==undefined){options.headers['Content-Type']='application/json';options.body=JSON.stringify(data)}
+  let response;
+  try{response=await fetch('/api/'+route,options)}
+  catch{throw Error('Локальный сервер не отвечает. Перезапустите TENSEI.bat.')}
+  if(route==='export'&&response.ok)return response.blob();
+  let result;
+  try{result=await response.json()}catch{throw Error('Сервер вернул некорректный ответ')}
+  if(!response.ok)throw Error(result.error||'Ошибка HTTP '+response.status);
+  return result;
 }
-document.querySelectorAll('.nav').forEach(x=>x.addEventListener('click',()=>section(x.dataset.page)));
-el('showJournal').onclick=()=>section('journal');
-function analyze(items){
+const text=(v)=>String(v??'');
+function asWeight(v){
+  if(v===null||v===undefined||String(v).trim()==='')return null;
+  let s=String(v).trim().replace(/[\s\u00a0]/g,'');
+  if(/^\d{1,3}[.,]\d{3}$/.test(s))s=s.replace(/[.,]/g,'');
+  else s=s.replace(',','.');
+  if(!/^\d+(?:\.\d+)?$/.test(s))return NaN;
+  return Number(s);
+}
+function inspect(items){
   const seen=new Set();
-  return items.map((raw,i)=>{
-    const row={...raw};
+  return items.map((row,index)=>{
     const issues=[];
-    if(row.uncertain)issues.push('Неуверенное распознавание');
-    if(!String(row.vehicle||'').trim())issues.push('Не указан номер ТС');
-    if(row.time&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(row.time))issues.push('Некорректное время');
-    if(n(row.gross)===null&&n(row.net)===null)issues.push('Нет веса');
-    for(const [name,key] of [['Тара','tare'],['Брутто','gross'],['Нетто','net']]){
-      const v=n(row[key]);if(v!==null&&(!Number.isFinite(v)||v<0||v>150000))issues.push(name+': необычное значение');
+    if(row.uncertain&&!row.reviewed)issues.push('Модель не уверена в записи');
+    if(!text(row.vehicle).trim())issues.push('Нет номера автомобиля');
+    if(row.time&&!/^(?:[01]?\d|2[0-3]):[0-5]\d$/.test(row.time))issues.push('Проверьте время');
+    const gross=asWeight(row.gross),tare=asWeight(row.tare),net=asWeight(row.net);
+    if(gross===null&&net===null)issues.push('Нет данных о весе');
+    for(const [label,v] of [['Тара',tare],['Брутто',gross],['Нетто',net]]){
+      if(v!==null&&(!Number.isFinite(v)||v<0||v>150000))issues.push(label+': некорректное значение');
     }
-    if(n(row.tare)!==null&&n(row.gross)!==null&&n(row.gross)<n(row.tare))issues.push('Брутто меньше тары');
-    if(n(row.tare)!==null&&n(row.gross)!==null&&n(row.net)!==null&&Math.abs(n(row.gross)-n(row.tare)-n(row.net))>1)issues.push('Не совпадает расчёт нетто');
-    if(n(row.net)!==null&&n(row.net)>45000)issues.push('Нетто больше 45 тонн');
-    if(n(row.net)===0)issues.push('Нулевой вес');
+    if(Number.isFinite(gross)&&Number.isFinite(tare)&&gross<tare)issues.push('Брутто меньше тары');
+    if(Number.isFinite(gross)&&Number.isFinite(tare)&&Number.isFinite(net)&&Math.abs(gross-tare-net)>1)issues.push('Брутто − тара ≠ нетто');
+    if(Number.isFinite(net)&&net>45000)issues.push('Нетто больше 45 т');
+    if(net===0)issues.push('Нулевой вес');
     const fingerprint=[row.time,row.vehicle,row.tare,row.gross,row.net].join('|');
-    if(row.vehicle&&seen.has(fingerprint))issues.push('Возможный повтор записи');
+    if(row.vehicle&&seen.has(fingerprint))issues.push('Возможная повторная запись');
     seen.add(fingerprint);
-    return {row,issues,i};
+    return {row,index,issues};
   });
 }
-function updateStats(){
-  const all=analyze(records),issueCount=all.filter(x=>x.issues.length).length;
-  const mass=records.reduce((acc,x)=>{const v=n(x.net);return acc+(Number.isFinite(v)?v:0)},0)/1000;
-  el('statRows').textContent=records.length;
-  el('statIssues').textContent=issueCount;
-  el('statTons').textContent=mass.toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3})+' т';
-  el('sideCount').textContent=records.length;
-  el('sideIssues').textContent=issueCount;
-  el('auditBadge').textContent=issueCount+' строк';
+function updateSummary(){
+  const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length).length;
+  const kilos=state.rows.reduce((sum,row)=>{const v=asWeight(row.net);return sum+(Number.isFinite(v)?v:0)},0);
+  $('metricRows').textContent=state.rows.length;
+  $('metricIssues').textContent=numIssues;
+  $('metricTons').textContent=(kilos/1000).toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3});
+  $('auditCount').textContent=numIssues;
+  $('download').disabled=state.rows.length===0||state.busy;
 }
-function changed(){rev++;updateStats();scheduleSave()}
-function scheduleSave(){
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(async()=>{
-    if(busy)return scheduleSave();
-    const version=rev;
-    try{await request('draft',{rows:records});if(version!==rev)scheduleSave()}
-    catch(e){setNotice('Не удалось сохранить черновик: '+e.message)}
-  },650);
+function queueSave(){
+  state.revision++;
+  $('saveStatus').textContent='Изменения ещё не сохранены';
+  clearTimeout(state.saveTimer);
+  state.saveTimer=setTimeout(()=>{
+    const version=state.revision;
+    const copy=state.rows.map(x=>({...x}));
+    state.savePending=state.savePending.catch(()=>{}).then(async()=>{
+      const res=await api('draft',{rows:copy});
+      if(version===state.revision)$('saveStatus').textContent='Сохранено локально';
+      return res;
+    }).catch(e=>{if(version===state.revision){$('saveStatus').textContent='Не удалось сохранить';status('Ошибка сохранения черновика: '+e.message,'error')}});
+  },550);
 }
-function makeCell(r,i,key){
-  const td=document.createElement('td'),inp=document.createElement('input');
-  inp.type='text';inp.value=r[key]??'';
-  inp.setAttribute('aria-label',key+' строка '+(i+1));
-  inp.addEventListener('change',()=>{
-    const value=inp.value.trim();
-    r[key]=['tare','gross','net'].includes(key)?value===''?null:Number(value.replace(',','.')):value;
-    if(['tare','gross'].includes(key)&&r.tare!==null&&r.gross!==null&&r.net===null&&r.gross>=r.tare)r.net=Number(r.gross)-Number(r.tare);
-    changed();renderTable();
+function updateRecords(){
+  updateSummary();
+  renderTable();
+  renderAudit();
+  queueSave();
+}
+function cell(index,key,row){
+  const td=document.createElement('td');
+  const input=document.createElement('input');
+  input.type='text';input.value=text(row[key]);input.setAttribute('aria-label',titles[key]+'; строка '+(index+1));
+  input.addEventListener('change',()=>{
+    const value=input.value.trim();
+    if(['tare','gross','net'].includes(key)&&value!==''&&!Number.isFinite(asWeight(value))){
+      status('Неверное число в строке '+(index+1)+'. Используйте цифры, пробел и десятичную запятую.','error');
+      input.value=text(row[key]);return;
+    }
+    row[key]=['tare','gross','net'].includes(key)?(value===''?null:asWeight(value)):value;
+    if(key==='vehicle')row.vehicle=text(row.vehicle).toUpperCase();
+    if(['tare','gross'].includes(key)&&row.net===null&&Number.isFinite(asWeight(row.gross))&&Number.isFinite(asWeight(row.tare))&&row.gross>=row.tare)row.net=row.gross-row.tare;
+    updateRecords();
   });
-  td.appendChild(inp);return td;
+  td.append(input);return td;
 }
 function renderTable(){
-  const query=el('search').value.trim().toLowerCase(),only=el('onlyIssues').checked,body=el('tableBody');
-  body.replaceChildren();
-  const analyzed=analyze(records).filter(({row,issues})=>(!only||issues.length)&&(!query||[row.time,row.vehicle,row.driver,row.source,row.note].some(v=>String(v||'').toLowerCase().includes(query))));
-  const chunk=document.createDocumentFragment();
-  for(const {row:r,issues,i} of analyzed){
-    const tr=document.createElement('tr');if(issues.length)tr.className='issue-row';
-    let cell=document.createElement('td');cell.textContent=i+1;tr.append(cell);
-    fields.forEach(k=>tr.append(makeCell(r,i,k)));
-    cell=document.createElement('td');cell.textContent=String(r.source||'');tr.append(cell);
-    cell=document.createElement('td');const check=document.createElement('input');check.type='checkbox';check.checked=!r.uncertain;check.title='Подтвердить ручную сверку с фотографией';check.setAttribute('aria-label','Строка '+(i+1)+' проверена');check.onchange=()=>{r.uncertain=!check.checked;changed();renderTable()};cell.append(check);tr.append(cell);
-    cell=document.createElement('td');cell.title=issues.join('; ');
-    const status=document.createElement('span');status.className='flag';status.textContent=issues.length?'⚠ '+issues.length+' замеч.':'✓ OK';cell.append(status);tr.append(cell);
-    cell=document.createElement('td');const remove=document.createElement('button');remove.className='row-remove';remove.textContent='×';remove.title='Удалить строку';remove.onclick=()=>{if(confirm('Удалить строку '+(i+1)+'?')){records.splice(i,1);changed();renderTable()}};cell.append(remove);tr.append(cell);chunk.append(tr);
+  const tbody=$('rowsBody');tbody.replaceChildren();
+  const query=$('search').value.trim().toLowerCase(),onlyIssues=$('onlyIssues').checked;
+  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
+  const fragment=document.createDocumentFragment();
+  for(const {row,index,issues} of selection){
+    const tr=document.createElement('tr');
+    tr.dataset.row=String(index);if(issues.length)tr.className='issue-row';
+    const number=document.createElement('td');number.textContent=String(index+1);tr.append(number);
+    for(const key of columns)tr.append(cell(index,key,row));
+    const reviewed=document.createElement('td'),check=document.createElement('input');
+    check.type='checkbox';check.checked=!!row.reviewed;check.setAttribute('aria-label','Строка '+(index+1)+' сверена с фотографией');
+    check.onchange=()=>{row.reviewed=check.checked;updateRecords()};
+    reviewed.append(check);tr.append(reviewed);
+    const issue=document.createElement('td'),flag=document.createElement('span');
+    flag.className='flag'+(issues.length?' issue':'');
+    flag.textContent=issues.length?'⚠ '+issues.length+' замеч.':'✓ Без замечаний';
+    flag.title=issues.join('; ');issue.append(flag);tr.append(issue);
+    const control=document.createElement('td'),remove=document.createElement('button');
+    remove.type='button';remove.className='row-remove';remove.textContent='×';
+    remove.title='Удалить строку '+(index+1);
+    remove.onclick=()=>{if(confirm('Удалить строку '+(index+1)+'?')){state.rows.splice(index,1);updateRecords()}};
+    control.append(remove);tr.append(control);fragment.append(tr);
   }
-  body.append(chunk);
-  el('tableSummary').textContent='Показано '+analyzed.length+' из '+records.length+' записей';
+  tbody.append(fragment);
+  $('emptyTable').hidden=selection.length>0;
+  $('emptyTable').textContent=state.rows.length?'Не найдено подходящих строк. Сбросьте фильтр или поиск.':'Пока нет записей. Загрузите фотографию или добавьте строку вручную.';
+  $('tableCount').textContent='Показано '+selection.length+' из '+state.rows.length+' строк';
 }
 function renderAudit(){
-  const area=el('auditList');area.replaceChildren();
-  const issues=analyze(records).filter(x=>x.issues.length);
-  if(!issues.length){const empty=document.createElement('div');empty.className='empty';empty.textContent=records.length?'Автоматических замечаний нет. Проверьте исходные фотографии.':'Сначала распознайте фотографии или добавьте строки.';area.append(empty);return}
+  const area=$('auditList');area.replaceChildren();
+  const issues=inspect(state.rows).filter(x=>x.issues.length);
+  if(!issues.length){
+    const p=document.createElement('p');p.className='audit-empty';p.textContent=state.rows.length?'Автоматических замечаний нет. Сверьте цифры с оригиналами.':'Замечания появятся после распознавания.';area.append(p);return;
+  }
   const fragment=document.createDocumentFragment();
   for(const item of issues){
     const div=document.createElement('div');div.className='audit-item';
-    const info=document.createElement('div'),heading=document.createElement('strong'),detail=document.createElement('p');
-    heading.textContent='Строка '+(item.i+1)+' · '+(item.row.vehicle||'ТС не указан');
-    detail.textContent=item.issues.join(' · ');info.append(heading,detail);
-    const btn=document.createElement('button');btn.className='secondary';btn.textContent='Исправить';btn.onclick=()=>{el('search').value=String(item.row.vehicle||'');el('onlyIssues').checked=true;section('journal')};
-    div.append(info,btn);fragment.append(div);
+    const desc=document.createElement('div'),title=document.createElement('strong'),p=document.createElement('p');
+    title.textContent='Строка '+(item.index+1)+' · '+(item.row.vehicle||'номер не указан');
+    p.textContent=item.issues.join(' · ');
+    desc.append(title,p);
+    const btn=document.createElement('button');btn.className='button button-outline';btn.type='button';btn.textContent='Открыть строку';
+    btn.onclick=()=>{
+      $('onlyIssues').checked=false;$('search').value='';renderTable();
+      document.querySelector('[data-row="'+item.index+'"]')?.scrollIntoView({behavior:'smooth',block:'center'});
+    };
+    div.append(desc,btn);fragment.append(div);
   }
   area.append(fragment);
 }
-el('search').oninput=()=>renderTable();el('onlyIssues').onchange=()=>renderTable();
-el('addRow').onclick=()=>{records.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,source:'Вручную',note:'',uncertain:false});changed();renderTable()};
-el('clear').onclick=async()=>{if(busy)return setNotice('Дождитесь завершения распознавания перед очисткой.');if(!confirm('Удалить все строки реестра и сохранённый черновик?'))return;records=[];clearTimeout(saveTimer);rev++;updateStats();renderTable();renderAudit();try{await request('draft',undefined,'DELETE')}catch(e){setNotice(e.message)}};
-el('download').onclick=async()=>{if(!records.length)return setNotice('В реестре пока нет строк');try{const blob=await request('export',{rows:records}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='TENSEI.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),6000)}catch(e){setNotice('Excel: '+e.message)}};
-const fileAllowed=name=>/\.(jpe?g|png|webp|gif|tiff?|bmp|avif|heic|heif|svg)$/i.test(name);
-function addFiles(add){
-  for(const f of add){if(f.size>20*1024*1024){setNotice('Пропущен '+f.name+': размер больше 20 МБ');continue}if(!fileAllowed(f.name)&&!f.type.startsWith('image/')){setNotice('Неизвестный формат: '+f.name);continue}files.push(f)}
-  drawFiles();showPreview(files[0]);
+function setConnection(label,stateName='pending'){
+  const box=$('connectionStatus');box.textContent=label;box.className='connection '+stateName;
 }
-function drawFiles(){
-  el('fileList').replaceChildren();
-  files.forEach((f,i)=>{const line=document.createElement('div');line.className='file-item';const span=document.createElement('span');span.textContent=f.name;const small=document.createElement('small');small.textContent=(f.size/1024/1024).toFixed(1)+' МБ';const btn=document.createElement('button');btn.textContent='×';btn.title='Убрать файл';btn.onclick=()=>{files.splice(i,1);drawFiles();showPreview(files[0])};line.append(span,small,btn);el('fileList').append(line)});
+function populateModels(models,selected){
+  const select=$('model');select.replaceChildren();
+  const items=Array.isArray(models)&&models.length?models:[
+    {id:'qwen/qwen3-vl-235b-a22b-instruct',name:'Qwen3 VL 235B — основная'},
+    {id:'qwen/qwen3-vl-30b-a3b-instruct',name:'Qwen3 VL 30B — экономичная'}
+  ];
+  for(const item of items){
+    const opt=document.createElement('option');opt.value=item.id;opt.textContent=item.name||item.id;select.append(opt);
+  }
+  if(selected&&!Array.from(select.options).some(o=>o.value===selected)){
+    const custom=document.createElement('option');custom.value=selected;custom.textContent=selected+' (сохранена ранее)';select.append(custom);
+  }
+  select.value=selected||items[0].id;
 }
-function showPreview(f){
-  if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=null;
-  const img=el('preview');img.hidden=true;el('previewEmpty').hidden=false;
-  if(!f)return;
-  previewUrl=URL.createObjectURL(f);img.src=previewUrl;
-  img.onload=()=>{img.hidden=false;el('previewEmpty').hidden=true};
-  img.onerror=()=>{img.hidden=true;el('previewEmpty').hidden=false;el('previewEmpty').textContent='Предпросмотр этого формата недоступен. Файл всё равно можно распознать.'};
+function diagnostic(message,kind='info'){
+  const box=$('connectionDetails');box.hidden=false;box.replaceChildren();
+  const p=document.createElement('p');p.textContent=message;p.style.margin='0';box.append(p);
+  if(kind==='error')box.style.borderColor='#dfaea8';else box.style.borderColor='';
+  return box;
 }
-el('dropzone').onclick=()=>el('photos').click();
-el('dropzone').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();el('photos').click()}};
-el('photos').onchange=e=>{addFiles([...e.target.files]);e.target.value=''};
-for(const event of ['dragover','dragenter'])el('dropzone').addEventListener(event,e=>{e.preventDefault();el('dropzone').classList.add('drag')});
-for(const event of ['dragleave','drop'])el('dropzone').addEventListener(event,e=>{e.preventDefault();el('dropzone').classList.remove('drag')});
-el('dropzone').addEventListener('drop',e=>addFiles([...e.dataTransfer.files]));
-function fileData(f){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Не удалось прочитать '+f.name));reader.readAsDataURL(f)})}
-el('run').onclick=async()=>{
-  if(busy)return;if(!files.length)return setNotice('Сначала загрузите фотографии.');
-  busy=true;el('run').disabled=true;const count=files.length,errors=[];let usedModel='';
+async function checkConnection(){
+  const button=$('checkConnection');button.disabled=true;
+  diagnostic('Проверяю каталог моделей Cloud.ru…');
   try{
-    const pending=files.slice();files=[];drawFiles();
-    for(let i=0;i<pending.length;i++){
-      const f=pending[i];el('progressText').textContent='Обработка '+(i+1)+'/'+count+': '+f.name;
-      el('progressBar').style.width=Math.round(100*i/count)+'%';showPreview(f);
-      try{const image=await fileData(f);const result=await request('recognize',{image,name:f.name});records.push(...result.rows);usedModel=result.model||usedModel;changed()}
-      catch(e){errors.push(f.name+': '+e.message);files.push(f)}
-    }
-    drawFiles();el('progressBar').style.width='100%';
-    el('progressText').textContent='Готово: '+(count-errors.length)+' из '+count+'. Строк: '+records.length+(usedModel?' · Модель: '+usedModel:'');
-    if(errors.length){const unique=[...new Set(errors.map(x=>x.slice(x.indexOf(': ')+2)))];setNotice('Не обработано фотографий: '+errors.length+'. '+unique.join(' | ')+' Откройте «Настройки» и нажмите «Проверить доступ».');}
-    else setNotice('Распознавание завершено. Проверьте замечания и экспортируйте Excel.');
-  }finally{busy=false;el('run').disabled=false;if(records.length)scheduleSave()}
-};
-el('save').onclick=async()=>{
-  try{const r=await request('settings',{key:el('key').value,model:el('model').value,fallback:el('fallback').checked});el('key').value='';el('saved').textContent=r.hasKey?'Ключ сохранён на диске':'Ключ не задан';el('connection').textContent=r.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ';el('connection').className='connection '+(r.hasKey?'':'off');el('connectionDetails').hidden=true;setNotice('Настройки сохранены. Нажмите «Проверить доступ» для диагностики.')}
-  catch(e){setNotice(e.message)}
-};
-async function testConnection(){
-  const btn=el('checkConnection'),detail=el('connectionDetails');
-  btn.disabled=true;detail.hidden=false;detail.textContent='Проверка списка моделей Cloud.ru…';
-  try{
-    const res=await fetch('/api/connection');
-    const result=await res.json();
-    if(!res.ok)throw Error(result.error||'Ошибка сервиса');
-    if(!result.ok)throw Error(result.reason||'Нет ключа');
+    const result=await api('connection',undefined,'GET');
+    if(!result.ok)throw Error(result.reason||'Нет API-ключа');
     if(result.selectedAvailable){
-      el('connection').textContent='Ключ и модель найдены';
-      el('connection').className='connection ok';
-      detail.textContent='Cloud.ru ответил. Выбранная модель есть в доступном каталоге. Проверьте её на фотографии для окончательного подтверждения.';
+      setConnection('Модель доступна в каталоге','ok');
+      diagnostic('Ключ работает. Выбранная модель найдена в каталоге Cloud.ru. Проверка не отправляет фотографию.');
     }else{
-      el('connection').textContent='Модель недоступна';
-      el('connection').className='connection off';
-      detail.replaceChildren();
-      const p=document.createElement('p');p.textContent=result.reason||'Выбранная модель недоступна';detail.append(p);
+      setConnection('Модель не найдена','error');
+      const panel=diagnostic(result.reason||'Выбранная модель недоступна по этому ключу.');
       if(result.available?.length){
-        const suggested=result.available[0],button=document.createElement('button');
-        button.className='secondary';button.textContent='Выбрать '+suggested.name;
-        button.onclick=()=>{el('model').value=suggested.id;detail.textContent='Нажмите «Сохранить», чтобы применить выбранную модель.'};
-        detail.append(button);
+        const suggestion=result.available[0];
+        const btn=document.createElement('button');btn.className='button button-outline';btn.type='button';
+        btn.textContent='Выбрать доступную: '+suggestion.name;
+        btn.onclick=()=>{
+          $('model').value=suggestion.id;
+          diagnostic('Модель выбрана. Нажмите «Сохранить», чтобы применить её.');
+        };
+        panel.append(btn);
       }else{
-        const hint=document.createElement('p');hint.textContent='Для этого ключа модели Qwen VL не обнаружены. Проверьте разрешения на сервис Foundation Models.';detail.append(hint);
+        const p=document.createElement('p');
+        p.textContent='В доступном каталоге не найдено подходящих моделей для фотографий. Проверьте права на Foundation Models.';
+        panel.append(p);
       }
     }
   }catch(e){
-    el('connection').textContent='Ошибка подключения';el('connection').className='connection off';
-    detail.textContent=e.message;
-  }finally{btn.disabled=false}
+    setConnection('Не удалось проверить Cloud.ru','error');
+    diagnostic(e.message,'error');
+  }finally{button.disabled=false}
 }
-el('checkConnection').onclick=testConnection;
-
-async function init(){
+$('settingsForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const btn=$('saveSettings');btn.disabled=true;
   try{
-    const [cfg,draft]=await Promise.all([fetch('/api/settings').then(r=>r.json()),fetch('/api/draft').then(r=>r.json())]);
-    const selector=el('model');selector.replaceChildren();
-    for(const m of cfg.models||[]){const option=document.createElement('option');option.value=m.id;option.textContent=m.name;selector.append(option)}
-    if(cfg.model&&!Array.from(selector.options).some(x=>x.value===cfg.model)){const option=document.createElement('option');option.value=cfg.model;option.textContent=cfg.model;selector.append(option)}
-    selector.value=cfg.model;
-    el('saved').textContent=cfg.hasKey?'Ключ сохранён в папке data':'Укажите ключ для начала';
-    el('connection').textContent=cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ';
-    el('connection').className='connection '+(cfg.hasKey?'':'off');
-    el('fallback').checked=cfg.fallback!==false;
-    records=Array.isArray(draft.rows)?draft.rows:[];
-    updateStats();
-    if(records.length)setNotice('Черновик восстановлен: '+records.length+' записей.');
-    if(cfg.hasKey)void testConnection();
-  }catch(e){setNotice('Ошибка инициализации: '+e.message)}
+    const result=await api('settings',{
+      key:$('apiKey').value.trim(),model:$('model').value,fallback:$('fallback').checked
+    });
+    state.hasKey=result.hasKey;
+    $('apiKey').value='';
+    $('settingsHelp').textContent=result.hasKey
+      ?'Ключ сохранён локально. Нажмите «Проверить подключение» — так вы увидите, доступна ли модель.'
+      :'Ключ не задан. Введите API-ключ Cloud.ru и сохраните настройки.';
+    setConnection(result.hasKey?'Ключ сохранён, модель не проверена':'Нужен API-ключ',result.hasKey?'pending':'error');
+    status('Настройки сохранены.','success');
+    if(result.hasKey)await checkConnection();
+  }catch(e){status('Настройки не сохранились: '+e.message,'error');diagnostic(e.message,'error')}
+  finally{btn.disabled=false}
+});
+$('checkConnection').onclick=checkConnection;
+function queueFiles(chosen){
+  const bad=[];
+  for(const file of chosen){
+    if(file.size>20*1024*1024){bad.push(file.name+' (больше 20 МБ)');continue}
+    const allowed=/\.(jpe?g|png|webp|gif|tiff?|bmp|avif|heic|heif|svg)$/i.test(file.name)||file.type.startsWith('image/');
+    if(!allowed){bad.push(file.name+' (неизвестный формат)');continue}
+    if(state.queue.some(f=>f.name===file.name&&f.size===file.size&&f.lastModified===file.lastModified))continue;
+    state.queue.push(file);
+  }
+  drawQueue();
+  if(state.queue.length)showPreview(state.queue[0]);
+  if(bad.length)status('Некоторые файлы не добавлены: '+bad.join(', '),'error');
 }
-init();
+function drawQueue(){
+  const list=$('fileQueue');list.replaceChildren();
+  for(const [index,file] of state.queue.entries()){
+    const div=document.createElement('div');div.className='queue-item';
+    const name=document.createElement('span');name.textContent=file.name;
+    const size=document.createElement('small');size.textContent=(file.size/1024/1024).toFixed(1)+' МБ';
+    const del=document.createElement('button');del.type='button';del.textContent='×';del.title='Убрать файл';
+    del.disabled=state.busy;
+    del.onclick=()=>{state.queue.splice(index,1);drawQueue();showPreview(state.queue[0])};
+    div.append(name,size,del);list.append(div);
+  }
+  $('queuedCount').textContent=state.queue.length?'('+state.queue.length+')':'';
+  $('recognize').disabled=state.busy||state.queue.length===0;
+  $('clearQueue').disabled=state.busy||state.queue.length===0;
+}
+function showPreview(file){
+  if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
+  state.previewUrl=null;
+  const img=$('previewImage');img.hidden=true;$('previewEmpty').hidden=false;
+  $('previewFilename').textContent='';
+  if(!file)return;
+  state.previewUrl=URL.createObjectURL(file);
+  $('previewFilename').textContent=file.name;
+  img.onload=()=>{img.hidden=false;$('previewEmpty').hidden=true};
+  img.onerror=()=>{img.hidden=true;$('previewEmpty').hidden=false;$('previewEmpty').textContent='Предпросмотр этого формата недоступен'};
+  img.src=state.previewUrl;
+}
+function fileData(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(Error('Не удалось прочитать файл '+file.name));
+    reader.readAsDataURL(file);
+  });
+}
+const drop=$('dropzone');
+drop.onclick=()=>$('photoFiles').click();
+drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('photoFiles').click()}};
+$('photoFiles').onchange=e=>{queueFiles([...e.target.files]);e.target.value=''};
+for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('dragging')});
+for(const ev of ['drop','dragleave'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('dragging')});
+drop.addEventListener('drop',e=>queueFiles([...e.dataTransfer.files]));
+$('clearQueue').onclick=()=>{if(state.busy)return;state.queue=[];drawQueue();showPreview(null)};
+$('recognize').onclick=async()=>{
+  if(state.busy||!state.queue.length)return;
+  if(!state.hasKey){
+    $('settingsDetails').open=true;
+    $('settings').scrollIntoView({behavior:'smooth',block:'start'});
+    return status('Сначала введите API-ключ и сохраните настройки Cloud.ru.','error');
+  }
+  state.busy=true;drawQueue();$('addRow').disabled=true;$('clearData').disabled=true;$('download').disabled=true;
+  const batch=[...state.queue];state.queue=[];
+  const failed=[],failures=new Set();
+  let done=0,usedModel='';
+  try{
+    for(const [index,file] of batch.entries()){
+      $('progressStatus').textContent='Читаю '+(index+1)+' из '+batch.length+': '+file.name;
+      $('progressBar').style.width=Math.round(index*100/batch.length)+'%';
+      showPreview(file);
+      try{
+        const result=await api('recognize',{image:await fileData(file),name:file.name});
+        state.rows.push(...result.rows);
+        usedModel=result.model||usedModel;
+        done++;
+        updateRecords();
+      }catch(e){failed.push(file);failures.add(e.message)}
+    }
+    state.queue.push(...failed);
+    $('progressBar').style.width='100%';
+    $('progressStatus').textContent='Готово: '+done+' из '+batch.length+' фото'+(usedModel?'. Модель: '+usedModel:'');
+    if(failed.length)status('Не обработано: '+failed.length+' фото. '+[...failures].slice(0,2).join(' | ')+' Неудачные файлы остались в очереди.','error');
+    else status('Распознавание завершено. Проверьте записи в таблице и сохраните Excel.','success');
+  }finally{
+    state.busy=false;$('addRow').disabled=false;$('clearData').disabled=false;drawQueue();updateSummary();if(state.rows.length)queueSave();
+  }
+};
+$('search').oninput=renderTable;
+$('onlyIssues').onchange=renderTable;
+$('addRow').onclick=()=>{
+  if(state.busy)return;
+  state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
+  updateRecords();$('results').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('download').onclick=async()=>{
+  if(state.busy||!state.rows.length)return;
+  const btn=$('download');btn.disabled=true;
+  try{
+    const blob=await api('export',{rows:state.rows});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');link.href=url;link.download='TENSEI.xlsx';link.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+    status('Excel подготовлен. Проверьте папку загрузок.','success');
+  }catch(e){status('Excel не выгружен: '+e.message,'error')}
+  finally{updateSummary()}
+};
+$('clearData').onclick=async()=>{
+  if(state.busy)return;
+  if(!confirm('Удалить все строки и сохранённый черновик?'))return;
+  clearTimeout(state.saveTimer);
+  const control=$('clearData');control.disabled=true;
+  try{
+    await state.savePending;
+    await api('draft',undefined,'DELETE');
+    state.rows=[];state.revision++;updateSummary();renderTable();renderAudit();
+    $('saveStatus').textContent='Черновик очищен';
+    status('Таблица очищена.','success');
+  }catch(e){status('Не удалось очистить черновик: '+e.message,'error')}
+  finally{control.disabled=false}
+};
+async function initialize(){
+  updateSummary();renderTable();renderAudit();drawQueue();
+  try{
+    const cfg=await api('settings',undefined,'GET');
+    populateModels(cfg.models,cfg.model);
+    $('fallback').checked=cfg.fallback!==false;
+    state.hasKey=Boolean(cfg.hasKey);
+    setConnection(cfg.hasKey?'Ключ сохранён · не проверен':'Нужен API-ключ',cfg.hasKey?'pending':'error');
+    $('settingsHelp').textContent=cfg.hasKey
+      ?'Ключ уже сохранён на диске. Для замены введите новый, затем нажмите «Сохранить».'
+      :'Введите ключ один раз. Он сохранится в папке data на этом компьютере.';
+  }catch(e){
+    setConnection('Ошибка локального сервера','error');
+    status('Настройки не загрузились: '+e.message,'error');
+    $('settingsDetails').open=true;
+  }
+  try{
+    const draft=await api('draft',undefined,'GET');
+    state.rows=Array.isArray(draft.rows)?draft.rows:[];
+    updateSummary();renderTable();renderAudit();
+    if(state.rows.length)$('saveStatus').textContent='Восстановлен черновик ('+state.rows.length+')';
+  }catch(e){status('Не удалось открыть сохранённый журнал: '+e.message,'error')}
+}
+initialize();
