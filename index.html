@@ -85,10 +85,11 @@
               <div class="photo-status-steps" id="photoStatusSteps" role="group" aria-label="Этапы обработки"><span>Ожидание</span><span>Подготовка</span><span>Распознавание</span><span>Проверка</span><span>Готово</span></div>
               <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
               <p id="humorCaption" class="humor-caption" aria-live="off" hidden></p>
-              <label class="inline-check"><input id="humorEnabled" type="checkbox" checked> Шуточные комментарии ИИ (включая чёрный юмор)</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
+              <label class="inline-check"><input id="humorEnabled" type="checkbox"> Необязательные комментарии во время обработки</label><details class="task-history"><summary>История задач <span id="taskCount"></span></summary><div id="taskHistory" class="task-list"></div></details>
             </div>
             <div class="preview">
-              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
+              <p class="help" id="qualityStatus">Качество фотографии будет проверено при распознавании.</p><div class="preview-heading">Предпросмотр <span id="previewFilename"></span></div>
+              <details class="advanced-photo-tools"><summary>Дополнительные инструменты · сетка, локальный OCR, выравнивание</summary><button id="detectGrid" class="button button-outline" type="button">Найти строки и ячейки локально</button>
               <button id="localRead" class="button button-outline" type="button">Прочитать ячейки без Cloud.ru</button>
               <p id="rapidOCRStatus" class="help" role="status">RapidOCR CPU: проверяю локальный сервис…</p>
               <button id="perspectivePreview" class="button button-outline" type="button">Выровнять лист · предпросмотр</button>
@@ -96,7 +97,7 @@
                 <p id="perspectiveNote" class="help">Исправленная геометрия не заменяет исходник автоматически.</p>
                 <img id="perspectiveImage" alt="Экспериментальный вариант с исправленной перспективой">
               </div>
-              <div id="localReadResults" class="local-read-results" hidden></div>
+              <div id="localReadResults" class="local-read-results" hidden></div></details>
               <div class="preview-surface" id="previewSurface">
                 <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>
