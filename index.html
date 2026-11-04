@@ -86,6 +86,11 @@
                 <img id="previewImage" alt="Выбранная фотография" hidden><div id="gridOverlay" aria-hidden="true"></div><div id="highlightBox" hidden title="Область строки на исходной фотографии"></div>
                 <span id="previewEmpty">Здесь появится фотография</span>
               </div>
+              <div class="crop-review" id="cropReview" hidden>
+                <div class="crop-review-title"><strong>Увеличенный фрагмент</strong><span>Ориентировочные координаты OCR · сверяйте с оригиналом</span></div>
+                <img id="cropPreview" alt="Увеличенный фрагмент строки или ячейки">
+                <p id="cropStatus" class="help"></p>
+              </div>
             </div>
           </div>
         </section>
@@ -100,6 +105,7 @@
           </div>
         </div>
         <label class="inline-check export-auto"><input id="autoExcel" type="checkbox" checked> Автоматически скачать Excel, когда все строки подтверждены и нет замечаний</label>
+        <p id="exportReadiness" class="help" role="status">Для автоматической выгрузки подтвердите все строки.</p>
         <div class="result-summary">
           <span><strong id="metricRows">0</strong> строк</span>
           <span><strong id="metricIssues">0</strong> на проверку</span>
