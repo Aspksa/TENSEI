@@ -39,8 +39,10 @@ jobs:
           node --check lib/images.mjs
           node --check lib/photo-review-intelligence.mjs
           node --check lib/legion-server.mjs
+          node --check lib/rapidocr.mjs
+          node --check lib/transport-reconcile.mjs
       - name: Compile optional Python OCR service
-        run: python -m py_compile scripts/paddle_service.py scripts/grid_geometry.py scripts/test_grid_geometry.py scripts/cell_cache.py scripts/test_cell_cache.py
+        run: python -m py_compile scripts/paddle_service.py scripts/grid_geometry.py scripts/test_grid_geometry.py scripts/cell_cache.py scripts/test_cell_cache.py scripts/rapidocr_service.py scripts/test_rapidocr_service.py
       - name: Install OpenCV test dependencies (Linux)
         if: runner.os == 'Linux'
         run: python -m pip install --quiet 'numpy>=1.24,<3' 'opencv-python-headless>=4.9,<5'
@@ -49,5 +51,7 @@ jobs:
         run: python -m unittest discover -s scripts -p test_grid_geometry.py
       - name: Test durable local OCR cache (Windows and Linux)
         run: python -m unittest discover -s scripts -p test_cell_cache.py
+      - name: Test optional RapidOCR service without downloading models
+        run: python -m unittest discover -s scripts -p test_rapidocr_service.py
       - name: Test image conversion, anomalies and HTTP API
         run: npm test
