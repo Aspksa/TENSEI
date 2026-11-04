@@ -123,9 +123,6 @@ def analyze(photo: Photo):
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
 
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8765, access_log=False)
-
 
 def decode_photo(photo: Photo):
     if len(photo.image) > 12_000_000:
@@ -204,3 +201,7 @@ def understand_page(photo: Photo):
         return {"engine": "PaddleOCR-VL", "raw": payload, "verified": False}
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)[:350]) from exc
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8765, access_log=False)
