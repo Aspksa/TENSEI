@@ -1,13 +1,153 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
-const root=process.cwd(), settingsPath=path.join(root,'data','settings.json');
-const readSettings=async()=>{try{return JSON.parse(await fs.readFile(settingsPath,'utf8'))}catch{return {key:'',model:''}}};
-const reply=(res,status,x)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(x))};
-async function body(req){const parts=[];let size=0;for await(const c of req){size+=c.length;if(size>12000000)throw Error('Слишком большой запрос');parts.push(c)}return JSON.parse(Buffer.concat(parts).toString())}
-const n=v=>v==null||v===''?null:(Number.isFinite(Number(String(v).replace(/\s/g,'').replace(',','.')))?Number(String(v).replace(/\s/g,'').replace(',','.')):null);
-function parseRows(v){const txt=String(v).replace(/^\s*```json\s*/i,'').replace(/```\s*$/,'').trim();let obj;try{obj=JSON.parse(txt)}catch{obj=JSON.parse(txt.slice(txt.indexOf('{'),txt.lastIndexOf('}')+1))}if(!Array.isArray(obj.rows))throw Error('Модель не вернула строки');return obj.rows.map(x=>{const tare=n(x.tare),gross=n(x.gross),net=n(x.net),bad=net!==null&&gross!==null&&tare!==null&&Math.abs(gross-tare-net)>1;return {time:String(x.time||''),vehicle:String(x.vehicle||''),driver:String(x.driver||''),tare,gross,net:net??(gross!==null&&tare!==null&&gross>=tare?gross-tare:null),note:String(x.note||'')+(bad?' Проверьте разницу весов':''),uncertain:!!x.uncertain||bad}})}
-async function recognize(input){const cfg=await readSettings();if(!cfg.key||!cfg.model)throw Error('Введите ключ и модель Cloud.ru');if(!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(input.image||'')))throw Error('Формат изображения: JPG, PNG или WebP');const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),120000);try{const r=await fetch('https://foundation-models.api.cloud.ru/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+cfg.key,'Content-Type':'application/json'},signal:ctrl.signal,body:JSON.stringify({model:cfg.model,temperature:0,max_tokens:5000,messages:[{role:'user',content:[{type:'text',text:'Прочитай рукописную таблицу. Верни только JSON {"rows":[{"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}]}. Вес в кг, каждая поездка отдельно. Нечитаемые цифры не придумывай; помечай uncertain=true. Без markdown.'},{type:'image_url',image_url:{url:input.image}}]}]})});const txt=await r.text();if(!r.ok)throw Error('Cloud.ru HTTP '+r.status+' '+txt.slice(0,180));const result=JSON.parse(txt);return {rows:parseRows(result.choices?.[0]?.message?.content||''),usage:result.usage||null}}finally{clearTimeout(timer)}}
-async function exportExcel(records){const book=new ExcelJS.Workbook(),sheet=book.addWorksheet('Журнал');sheet.columns=[['№',6],['Время',12],['ТС',18],['Водитель',22],['Тара кг',16],['Брутто кг',16],['Нетто кг',16],['Нетто т',16],['Примечание',40],['Проверить',13]].map(([header,width])=>({header,width}));sheet.getRow(1).font={bold:true};records.forEach((r,i)=>{const net=n(r.net),row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,n(r.tare),n(r.gross),net,net===null?null:{formula:'G'+(i+2)+'/1000'},r.note,r.uncertain?'ДА':'']);row.getCell(8).numFmt='0.000';if(r.uncertain)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE6C0'}}});sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};return Buffer.from(await book.xlsx.writeBuffer())}
-http.createServer(async(req,res)=>{try{const url=new URL(req.url,'http://localhost');if(req.method==='GET'&&url.pathname==='/'){res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'});res.end(await fs.readFile(path.join(root,'index.html')));return}if(req.method==='GET'&&url.pathname==='/api/settings'){const c=await readSettings();return reply(res,200,{model:c.model,hasKey:!!c.key})}if(req.method==='POST'&&url.pathname==='/api/settings'){const x=await body(req),old=await readSettings();await fs.mkdir(path.dirname(settingsPath),{recursive:true});await fs.writeFile(settingsPath,JSON.stringify({key:String(x.key||old.key||''),model:String(x.model||old.model||'')}));return reply(res,200,{ok:true})}if(req.method==='POST'&&url.pathname==='/api/recognize')return reply(res,200,await recognize(await body(req)));if(req.method==='POST'&&url.pathname==='/api/export'){const x=await body(req);if(!Array.isArray(x.rows))throw Error('Нет строк');const buf=await exportExcel(x.rows);res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':'attachment; filename="TENSEI.xlsx"'});res.end(buf);return}reply(res,404,{error:'Не найдено'})}catch(e){reply(res,400,{error:e.name==='AbortError'?'Тайм-аут Cloud.ru':e.message})}}).listen(Number(process.env.PORT||57474),'127.0.0.1',()=>console.log('TENSEI_READY http://127.0.0.1:'+(process.env.PORT||57474)));
+import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
+import {prepareImage,FORMATS} from './lib/images.mjs';
+
+const root=path.dirname(fileURLToPath(import.meta.url));
+const dataDir=path.join(root,'data');
+const settingsPath=path.join(dataDir,'settings.json');
+const draftPath=path.join(dataDir,'draft.json');
+const prompt='Прочитай фото рукописного журнала отгрузок/взвешиваний. Верни ТОЛЬКО валидный JSON объект с массивом rows. Формат строки: {"time":"","vehicle":"","driver":"","tare":null,"gross":null,"net":null,"note":"","uncertain":false}. Каждое физическое событие/рейс — отдельная строка; не удаляй повторы ТС. Вес в килограммах, не тоннах. Извлекай значения строго из соответствующих колонок; не выдумывай сведения. Если символы неразборчивы, оставляй поле пустым/null и uncertain=true, объясни в note. Не вычисляй неизвестные значения в уме. Сохраняй порядок строк. Никакого markdown.';
+
+async function settings(){
+  try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL)}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL};throw Error('Ошибка чтения настроек')}
+}
+async function writeJson(file,obj){
+  await fs.mkdir(dataDir,{recursive:true});
+  const tmp=file+'.'+process.pid+'.tmp';
+  try{await fs.writeFile(tmp,JSON.stringify(obj,null,2),{mode:0o600});await fs.rename(tmp,file)}
+  finally{await fs.rm(tmp,{force:true}).catch(()=>{})}
+}
+function send(res,status,body){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(body))}
+async function json(req){
+  if(!String(req.headers['content-type']||'').startsWith('application/json'))throw Error('Ожидается JSON');
+  const chunks=[];let length=0;
+  for await(const c of req){length+=c.length;if(length>32*1024*1024)throw Error('Запрос больше 32 МБ');chunks.push(c)}
+  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Error('Некорректный JSON')}
+}
+function safeRequest(req){
+  const host=String(req.headers.host||'');
+  if(!/^(?:127\.0\.0\.1|localhost):\d+$/.test(host))return false;
+  const origin=req.headers.origin;
+  return !origin||origin==='http://'+host;
+}
+function cloudError(status){
+  if(status===401||status===403)return 'Cloud.ru: проверьте API-ключ и доступ к модели ('+status+')';
+  if(status===429)return 'Cloud.ru: превышен лимит запросов, повторите позднее';
+  if(status===402)return 'Cloud.ru: недостаточно средств';
+  return 'Cloud.ru вернул HTTP '+status+'. Проверьте ID модели, её доступность и подключение.';
+}
+async function recognize(input){
+  const cfg=await settings();
+  if(!cfg.key)throw Error('Сначала сохраните API-ключ Cloud.ru');
+  const converted=await prepareImage(input.image);
+  const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),120000);
+  try{
+    const response=await fetch('https://foundation-models.api.cloud.ru/v1/chat/completions',{
+      method:'POST',signal:ctrl.signal,headers:{'Authorization':'Bearer '+cfg.key,'Content-Type':'application/json'},
+      body:JSON.stringify({model:cfg.model,temperature:0,max_tokens:8000,messages:[
+        {role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:converted.image}}]}
+      ]})
+    });
+    if(!response.ok)throw Error(cloudError(response.status));
+    const result=await response.json();
+    const content=result.choices?.[0]?.message?.content;
+    const text=typeof content==='string'?content:Array.isArray(content)?content.filter(x=>x.type==='text').map(x=>x.text).join(''):'';
+    const rows=parseModel(text).map(r=>({...r,source:String(input.name||'').slice(0,180)}));
+    return {rows,usage:result.usage||null,format:converted.originalFormat,model:cfg.model};
+  }catch(e){
+    if(e.name==='AbortError')throw Error('Cloud.ru не ответил за 120 секунд. Повторите эту страницу.');
+    if(e instanceof TypeError)throw Error('Не удалось подключиться к Cloud.ru. Проверьте интернет и сертификаты.');
+    throw e;
+  }finally{clearTimeout(timer)}
+}
+async function excel(raw){
+  const records=safeRows(raw);
+  const book=new ExcelJS.Workbook();
+  book.creator='TENSEI';
+  book.calcProperties.fullCalcOnLoad=true;
+  const sheet=book.addWorksheet('Реестр',{views:[{state:'frozen',ySplit:1}]});
+  sheet.columns=[
+    ['№',7],['Время',11],['ТС',18],['Водитель',24],['Тара, кг',15],
+    ['Брутто, кг',16],['Нетто, кг',15],['Нетто, т',14],
+    ['Источник',23],['Примечание',35],['Проверить',16],['Аномалии',55]
+  ].map(([header,width])=>({header,width}));
+  sheet.getRow(1).height=28;
+  sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
+  records.forEach((r,i)=>{
+    const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
+      r.net===null?null:r.net/1000,r.source,r.note,r.issues.length?'ПРОВЕРИТЬ':'OK',r.issues.join('; ')]);
+    for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
+    row.getCell(8).numFmt='0.000';
+    if(r.issues.length)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
+    else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
+  });
+  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:12}};
+  sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
+  sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
+  const summary=book.addWorksheet('Контроль');
+  summary.addRows([['Проверка','Значение'],['Всего строк',records.length],['С замечаниями',records.filter(x=>x.issues.length).length],
+    ['Без замечаний',records.filter(x=>!x.issues.length).length],['Итог нетто, т',records.reduce((s,x)=>s+(x.net??0),0)/1000]]);
+  summary.getColumn(1).width=27;summary.getColumn(2).width=20;
+  summary.getCell('B5').numFmt='0.000';
+  summary.getRow(1).font={bold:true};
+  return Buffer.from(await book.xlsx.writeBuffer());
+}
+async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
+  catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
+const server=http.createServer(async(req,res)=>{
+  try{
+    if(!safeRequest(req))return send(res,403,{error:'Доступ только с локального компьютера'});
+    res.setHeader('X-Content-Type-Options','nosniff');
+    res.setHeader('Referrer-Policy','no-referrer');
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+    const url=new URL(req.url,'http://127.0.0.1');
+    const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8']};
+    if(req.method==='GET'&&staticFiles[url.pathname]){
+      const [filename,type]=staticFiles[url.pathname];
+      res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});
+      return res.end(await fs.readFile(path.join(root,filename)));
+    }
+    if(req.method==='GET'&&url.pathname==='/api/settings'){
+      const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS});
+    }
+    if(req.method==='POST'&&url.pathname==='/api/settings'){
+      const payload=await json(req),previous=await settings();
+      const model=String(payload.model||DEFAULT_MODEL).trim();
+      if(model.length>140||!/^[-a-zA-Z0-9_./]+$/.test(model))throw Error('Некорректный ID модели');
+      const key=String(payload.key||previous.key||'').trim();
+      if(key.length>2048)throw Error('API-ключ слишком длинный');
+      await writeJson(settingsPath,{key,model});
+      return send(res,200,{ok:true,hasKey:!!key,model});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/draft')return send(res,200,await getDraft());
+    if(req.method==='POST'&&url.pathname==='/api/draft'){
+      const payload=await json(req),rows=safeRows(payload.rows).map(({issues,index,...r})=>r);
+      const savedAt=new Date().toISOString();await writeJson(draftPath,{rows,savedAt});
+      return send(res,200,{ok:true,savedAt,count:rows.length});
+    }
+    if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='POST'&&url.pathname==='/api/recognize')return send(res,200,await recognize(await json(req)));
+    if(req.method==='POST'&&url.pathname==='/api/export'){
+      const rows=(await json(req)).rows;
+      const file=await excel(rows);
+      res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition':'attachment; filename="TENSEI.xlsx"','Content-Length':file.length,'Cache-Control':'no-store'});
+      return res.end(file);
+    }
+    return send(res,404,{error:'Раздел не найден'});
+  }catch(e){return send(res,400,{error:String(e.message||e).slice(0,260)})}
+});
+const requestedPort=process.env.PORT?Number(process.env.PORT):0;
+server.on('error',e=>{console.error('Не удалось открыть локальный порт:',e.message);process.exitCode=1});
+server.listen(requestedPort,'127.0.0.1',()=>{
+  const address='http://127.0.0.1:'+server.address().port;
+  console.log('TENSEI_READY '+address);
+  if(process.platform==='win32'&&process.env.TENSEI_NO_BROWSER!=='1')
+    execFile('rundll32.exe',['url.dll,FileProtocolHandler',address],()=>{});
+});
