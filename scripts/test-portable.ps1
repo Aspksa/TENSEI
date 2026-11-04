@@ -34,3 +34,6 @@ try {
 } finally {
   Remove-Item -LiteralPath $temporary -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# A deliberately rejected restore must not leave CI with a nonzero exit status.
+exit 0
