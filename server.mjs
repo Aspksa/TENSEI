@@ -10,7 +10,8 @@ import {prepareImage,FORMATS} from './lib/images.mjs';
 import {listCloudModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
-import {improvePhoto} from './lib/vision.mjs';
+import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
+import {exportReadiness} from './lib/review-policy.mjs';
 import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText} from './lib/optional-ocr.mjs';
 import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/local-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
@@ -174,18 +175,19 @@ async function excel(raw){
   sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
   records.forEach((r,i)=>{
     const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
-      r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',r.issues.length?'ПРОВЕРИТЬ':'OK',r.issues.join('; ')]);
+      r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',(r.issues.length||!r.reviewed)?'ПРОВЕРИТЬ':'OK',
+      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; ')]);
     for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
     row.getCell(8).numFmt='0.000';
-    if(r.issues.length)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
+    if(r.issues.length||!r.reviewed)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
     else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
   });
   sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:13}};
   sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
   sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
   const summary=book.addWorksheet('Контроль');
-  summary.addRows([['Проверка','Значение'],['Всего строк',records.length],['С замечаниями',records.filter(x=>x.issues.length).length],
-    ['Без замечаний',records.filter(x=>!x.issues.length).length],['Итог нетто, т',records.reduce((s,x)=>s+(x.net??0),0)/1000]]);
+  summary.addRows([['Проверка','Значение'],['Всего строк',records.length],['Проверить',records.filter(x=>x.issues.length||!x.reviewed).length],
+    ['Проверено без замечаний',records.filter(x=>!x.issues.length&&x.reviewed).length],['Итог нетто, т',records.reduce((s,x)=>s+(x.net??0),0)/1000]]);
   summary.getColumn(1).width=27;summary.getColumn(2).width=20;
   summary.getCell('B5').numFmt='0.000';
   summary.getRow(1).font={bold:true};
@@ -307,6 +309,16 @@ const server=http.createServer(async(req,res)=>{
       await writeJson(templatesPath,[...rest,t]);
       return send(res,200,{ok:true,template:t});
     }
+    if(req.method==='POST'&&url.pathname==='/api/row-crop'){
+      const input=await json(req),id=String(input.sourceId||'');
+      if(!/^[0-9a-f-]{36}$/i.test(id))throw Error('Неверный идентификатор фотографии');
+      const box=fixBox(input.bbox);
+      if(!box)throw Error('Нет достоверных координат строки или ячейки');
+      const raw=await fs.readFile(path.join(sourceDir,id+'.jpg'));
+      const prepared='data:image/jpeg;base64,'+raw.toString('base64');
+      const image=await cropBox(prepared,box,{width:1400,quality:89});
+      return send(res,200,{image,verified:false,bbox:box});
+    }
     const sourceMatch=/^\/api\/source\/([0-9a-f-]{36})$/.exec(url.pathname);
     if(req.method==='GET'&&sourceMatch){
       const buffer=await fs.readFile(path.join(sourceDir,sourceMatch[1]+'.jpg'));
@@ -367,7 +379,13 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,await photoQueue.enqueue(()=>recognize(input)));
     }
     if(req.method==='POST'&&url.pathname==='/api/export'){
-      const rows=(await json(req)).rows;
+      const input=await json(req),rows=input.rows;
+      // The browser's automatic export MUST be checked again on the server.
+      if(input.verifiedOnly===true){
+        const readiness=exportReadiness(rows);
+        if(!readiness.ready)return send(res,409,{error:'Excel для подтверждённых строк недоступен: '+readiness.reviewPending.length+
+          ' не сверено, '+readiness.invalid.length+' с замечаниями',readiness});
+      }
       const file=await excel(rows);
       res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition':'attachment; filename="TENSEI.xlsx"','Content-Length':file.length,'Cache-Control':'no-store'});

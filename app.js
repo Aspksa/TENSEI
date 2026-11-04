@@ -54,7 +54,21 @@ function inspect(items){
     return {row,index,issues};
   });
 }
-let lastVerifiedExcelSignature='',verifiedExcelTimer=null;
+function exportReadiness(rows){
+  const checks=inspect(rows);
+  const reviewPending=checks.filter(x=>!x.row.reviewed).map(x=>x.index+1);
+  const invalid=checks.filter(x=>x.issues.length).map(x=>({row:x.index+1,issues:x.issues}));
+  return {ready:checks.length>0&&!reviewPending.length&&!invalid.length,
+    reviewPending,invalid};
+}
+function statusLabel(task){
+  if(task.status==='done')return 'Готово · '+(task.rowCount||0)+' строк';
+  if(task.status==='error')return 'Ошибка · '+String(task.error||'нет подробностей').slice(0,90);
+  if(task.status==='processing')return 'Обработка · '+(task.phase||'подготовка')+' · '+
+    Math.min(99,Math.max(0,Number(task.progress)||0))+'%';
+  return 'В очереди';
+}
+let lastVerifiedExcelSignature='',verifiedExcelTimer=null,exportInFlight=false;
 function scheduleVerifiedExcel(){
   clearTimeout(verifiedExcelTimer);
   if(state.busy||!$('autoExcel')?.checked||state.rows.length===0)return;
@@ -64,18 +78,22 @@ function scheduleVerifiedExcel(){
   if(signature===lastVerifiedExcelSignature)return;
   verifiedExcelTimer=setTimeout(()=>{
     if(state.busy||!$('autoExcel').checked||state.rows.some(r=>!r.reviewed)||inspect(state.rows).some(x=>x.issues.length))return;
-    lastVerifiedExcelSignature=signature;
-    $('download').click();
+    void downloadExcel({verifiedOnly:true,signature});
   },850);
 }
 function updateSummary(){
-  const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length).length;
+  const examined=inspect(state.rows),numIssues=examined.filter(x=>x.issues.length||!x.row.reviewed).length;
   const kilos=state.rows.reduce((sum,row)=>{const v=asWeight(row.net);return sum+(Number.isFinite(v)?v:0)},0);
   $('metricRows').textContent=state.rows.length;
   $('metricIssues').textContent=numIssues;
   $('metricTons').textContent=(kilos/1000).toLocaleString('ru-RU',{minimumFractionDigits:3,maximumFractionDigits:3});
   $('auditCount').textContent=numIssues;
-  $('download').disabled=state.rows.length===0||state.busy;
+  $('download').disabled=state.rows.length===0||state.busy||exportInFlight;
+  const pending=examined.filter(x=>!x.row.reviewed).length;
+  const line=$('exportReadiness');
+  if(line)line.textContent=state.rows.length===0?'Добавьте фотографии для формирования Excel.':
+    pending===0&&numIssues===0?'Все строки подтверждены — Excel готов к автоматической выгрузке.':
+    'На проверку: '+pending+' неподтверждённых строк; '+numIssues+' с замечаниями. Ручной Excel сохранит отметки проверки.';
 }
 function queueSave(){
   state.revision++;
@@ -122,7 +140,7 @@ function cell(index,key,row){
 function renderTable(){
   const tbody=$('rowsBody');tbody.replaceChildren();
   const query=$('search').value.trim().toLowerCase(),onlyIssues=$('onlyIssues').checked;
-  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
+  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length||!row.reviewed)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
   const fragment=document.createDocumentFragment();
   for(const {row,index,issues} of selection){
     const tr=document.createElement('tr');
@@ -136,12 +154,16 @@ function renderTable(){
     reviewed.append(check);tr.append(reviewed);
     const issue=document.createElement('td'),flag=document.createElement('span');
     flag.className='flag'+(issues.length?' issue':'');
-    flag.textContent=issues.length?'⚠ '+issues.length+' замеч.':'✓ Без замечаний';
-    flag.title=issues.join('; ');issue.append(flag);tr.append(issue);
+    flag.textContent=issues.length?'⚠ '+issues.length+' замеч.':row.reviewed?'✓ Сверено':'◷ Сверить';
+    flag.title=[...issues,...(!row.reviewed?['Не подтверждено по фото']:[])].join('; ');issue.append(flag);tr.append(issue);
     const control=document.createElement('td'),remove=document.createElement('button');
     remove.type='button';remove.className='row-remove';remove.textContent='×';
     remove.title='Удалить строку '+(index+1);
     remove.onclick=()=>{if(confirm('Удалить строку '+(index+1)+'?')){state.rows.splice(index,1);updateRecords()}};
+    if(row.sourceId){const photo=document.createElement('button');photo.type='button';photo.className='row-photo';photo.textContent='Фото';
+      photo.title='Открыть исходный снимок и увеличенный фрагмент';
+      photo.onclick=event=>{event.stopPropagation();showSource(row);$('upload').scrollIntoView({behavior:'smooth',block:'start'});};
+      control.append(photo);}
     control.append(remove);tr.append(control);fragment.append(tr);
   }
   tbody.append(fragment);
@@ -151,7 +173,7 @@ function renderTable(){
 }
 function renderAudit(){
   const area=$('auditList');area.replaceChildren();
-  const issues=inspect(state.rows).filter(x=>x.issues.length);
+  const issues=inspect(state.rows).filter(x=>x.issues.length||!x.row.reviewed);
   if(!issues.length){
     const p=document.createElement('p');p.className='audit-empty';p.textContent=state.rows.length?'Автоматических замечаний нет. Сверьте цифры с оригиналами.':'Замечания появятся после распознавания.';area.append(p);return;
   }
@@ -160,7 +182,7 @@ function renderAudit(){
     const div=document.createElement('div');div.className='audit-item';
     const desc=document.createElement('div'),title=document.createElement('strong'),p=document.createElement('p');
     title.textContent='Строка '+(item.index+1)+' · '+(item.row.vehicle||'номер не указан');
-    p.textContent=item.issues.join(' · ');
+    p.textContent=[...item.issues,...(!item.row.reviewed?['Не подтверждено по фотографии']:[])].join(' · ');
     desc.append(title,p);
     const btn=document.createElement('button');btn.className='button button-outline';btn.type='button';btn.textContent='Открыть строку';
     btn.onclick=()=>{
@@ -344,6 +366,7 @@ $('localRead').onclick=async()=>{
   finally{button.disabled=false}
 };
 function showPreview(file){
+  ++cropRequest;$('cropReview').hidden=true;$('cellReviewToolbar').hidden=true;
   gridBoxes=[];$('gridOverlay').replaceChildren();$('localReadResults').hidden=true;
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
@@ -475,18 +498,29 @@ $('addRow').onclick=()=>{
   state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
   updateRecords();$('results').scrollIntoView({behavior:'smooth',block:'start'});
 };
-$('download').onclick=async()=>{
-  if(state.busy||!state.rows.length)return;
-  const btn=$('download');btn.disabled=true;
+async function downloadExcel({verifiedOnly=false,signature=null}={}){
+  if(state.busy||!state.rows.length||exportInFlight)return;
+  const readiness=exportReadiness(state.rows);
+  if(verifiedOnly&&!readiness.ready)return;
+  if(!verifiedOnly&&!readiness.ready){
+    const ok=confirm('В реестре '+readiness.reviewPending.length+' неподтверждённых строк и '+
+      readiness.invalid.length+' строк с замечаниями. Выгрузить Excel с пометками «Проверить»?');
+    if(!ok)return;
+  }
+  exportInFlight=true;updateSummary();
   try{
-    const blob=await api('export',{rows:state.rows});
+    const blob=await api('export',{rows:state.rows.map(r=>({...r})),verifiedOnly});
     const url=URL.createObjectURL(blob);
-    const link=document.createElement('a');link.href=url;link.download='TENSEI.xlsx';link.click();
+    const link=document.createElement('a');link.href=url;
+    link.download=verifiedOnly?'TENSEI-проверено.xlsx':'TENSEI-черновик.xlsx';link.click();
     setTimeout(()=>URL.revokeObjectURL(url),5000);
-    status('Excel подготовлен. Проверьте папку загрузок.','success');
+    if(verifiedOnly)lastVerifiedExcelSignature=signature||JSON.stringify(state.rows);
+    status(verifiedOnly?'Проверенный Excel подготовлен.':'Черновой Excel подготовлен с отметками замечаний.','success');
   }catch(e){status('Excel не выгружен: '+e.message,'error')}
-  finally{updateSummary()}
-};
+  finally{exportInFlight=false;updateSummary()}
+}
+$('download').onclick=()=>{void downloadExcel()};
+
 $('clearData').onclick=async()=>{
   if(state.busy)return;
   if(!confirm('Удалить все строки и сохранённый черновик?'))return;
@@ -510,9 +544,15 @@ async function refreshTasks(){
     const item=document.createElement('div');item.className='task-item';
     const name=document.createElement('strong');name.textContent=task.name||'Фото';
     const meta=document.createElement('small');
-    meta.textContent=task.status==='done'?'Готово · '+(task.rowCount||0)+' строк'+(task.model?' · '+task.model:''):
-      task.status==='error'?'Ошибка · '+(task.error||'нет подробностей'):task.status==='processing'?'Обработка':'В очереди';
+    meta.textContent=statusLabel(task);
     item.append(name,meta);
+    if(task.status==='done'&&task.reportId){
+      const view=document.createElement('button');view.type='button';view.className='button button-outline';
+      view.textContent='Посмотреть ячейки';
+      view.onclick=async()=>{try{await showReportCells(task)}
+        catch(e){status('Не удалось показать ячейки: '+e.message,'error')}};
+      item.append(view);
+    }
     if(task.status==='done'&&task.reportId){
       const importBtn=document.createElement('button');importBtn.type='button';
       importBtn.className='button button-outline';importBtn.textContent='Добавить строки';
@@ -577,8 +617,48 @@ $('saveTemplate').onclick=async()=>{
   }catch(e){status('Шаблон не сохранился: '+e.message,'error')}
   finally{button.disabled=false}
 };
+let reviewCells=[],reviewSourceId='',cropRequest=0;
+async function showRowCrop(sourceId,bbox,label='Строка'){
+  const crop=$('cropReview'),note=$('cropStatus'),img=$('cropPreview');
+  const request=++cropRequest;
+  if(!sourceId||!Array.isArray(bbox)||bbox.length!==4){
+    crop.hidden=true;return;
+  }
+  crop.hidden=false;img.hidden=true;note.textContent='Увеличиваю фрагмент: '+label+'…';
+  try{
+    const result=await api('row-crop',{sourceId,bbox});
+    if(request!==cropRequest)return;
+    img.src=result.image;img.hidden=false;
+    note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
+  }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
+}
+$('cellPicker').onchange=()=>{
+  const i=Number($('cellPicker').value),box=reviewCells[i];
+  if(box)void showRowCrop(reviewSourceId,box,'Ячейка '+(i+1));
+};
+async function showReportCells(task){
+  const report=await api('photo-report/'+task.reportId,undefined,'GET');
+  if(!report.sourceId)throw Error('У отчёта нет исходной фотографии');
+  showSource({sourceId:report.sourceId,source:task.name,bbox:null});
+  reviewCells=(report.layout?.cellBoxes||[]).filter(b=>
+    Array.isArray(b)&&b.length===4&&b.every(v=>typeof v==='number'&&v>=0&&v<=1)&&b[2]>b[0]&&b[3]>b[1]).slice(0,700);
+  reviewSourceId=report.sourceId;
+  $('cellReviewToolbar').hidden=reviewCells.length===0;
+  const picker=$('cellPicker');picker.replaceChildren();
+  for(let i=0;i<reviewCells.length;i++){
+    const option=document.createElement('option');option.value=String(i);
+    option.textContent='Ячейка '+(i+1);picker.append(option);
+  }
+  gridBoxes=reviewCells;
+  drawPreviewGrid();
+  if(reviewCells.length)void showRowCrop(reviewSourceId,reviewCells[0],'Ячейка 1');
+  else $('cropStatus').textContent='У этого фото нет надёжно обнаруженных ячеек.';
+  $('upload').scrollIntoView({behavior:'smooth',block:'start'});
+}
 function showSource(row){
   gridBoxes=[];$('gridOverlay').replaceChildren();
+  reviewCells=[];reviewSourceId='';$('cellReviewToolbar').hidden=true;
+  $('cropReview').hidden=true;++cropRequest;
   if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';return}
   const src='/api/source/'+row.sourceId;
   const img=$('previewImage'),overlay=$('highlightBox');
@@ -587,6 +667,7 @@ function showSource(row){
   img.hidden=false;overlay.hidden=true;
   const update=()=>{
     overlay.hidden=true;
+    drawPreviewGrid();
     if(!Array.isArray(row.bbox)||row.bbox.length!==4||!img.naturalWidth||!img.naturalHeight)return;
     const area=$('previewSurface');
     const displayWidth=area.clientWidth,displayHeight=area.clientHeight;
@@ -608,6 +689,7 @@ function showSource(row){
   if(img.getAttribute('src')!==src)img.src=src;
   else if(img.complete)update();
   $('qualityStatus').textContent=row.bbox?'Подсвеченная область приблизительная: сверьте с фото.':'Для строки не получены точные координаты. Открыта исходная фотография.';
+  if(row.bbox)void showRowCrop(row.sourceId,row.bbox,'Строка');
 }
 
 $('approveMemory').onclick=async()=>{
