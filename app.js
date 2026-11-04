@@ -450,10 +450,11 @@ $('recognize').onclick=async()=>{
       const caption='Фото '+(index+1)+' из '+batch.length+': '+file.name;
       $('progressStatus').textContent=caption+' · сохраняю оригинал…';
       showPreview(file);
+      let originalSaved=false;
       try{
         const result=await api('scans',{image:await fileData(file),name:file.name,
           templateId:$('templateSelect').value,force:$('forceReprocess')?.checked===true});
-        const scanId=result.scan.id;saved++;
+        const scanId=result.scan.id;saved++;originalSaved=true;
         await refreshScanLibrary().catch(()=>{});
         const ended=await pollArchivedScan(scanId,caption);
         if(ended.scan.status==='done'){
@@ -464,7 +465,7 @@ $('recognize').onclick=async()=>{
           state.busy=true;
         }else errors.push(file.name+': '+ended.scan.error);
       }catch(e){
-        if(!saved||saved<index+1)failedUploads.push(file);
+        if(!originalSaved)failedUploads.push(file);
         errors.push(file.name+': '+e.message);
       }
       await refreshScanLibrary().catch(()=>{});
