@@ -30,7 +30,7 @@ test('локальный HTTP сервер, черновик и Excel',async()=>
     assert.equal(r.status,200);
     const settings=await r.json();
     assert.equal(settings.model,'qwen/qwen3-vl-235b-a22b-instruct');
-    assert.equal(settings.models.length,3);
+    assert.equal(settings.models.length,5);
     r=await fetch(url+'/api/draft',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({rows:[{vehicle:'A123BC',time:'08:20',tare:12000,gross:40000,net:28000}]})});
     assert.equal(r.status,200);
