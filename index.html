@@ -28,7 +28,7 @@
     <aside class="side-menu" aria-label="Меню TENSEI">
       <div class="side-title">РАЗДЕЛЫ</div>
       <button id="navPhoto" type="button" class="side-link active" aria-current="page">
-        <span class="side-icon" aria-hidden="true">⌂</span><span><strong>Главная</strong><small>Загрузка и статусы фото</small></span>
+        <span class="side-icon" aria-hidden="true">⌂</span><span><strong>Фото и OCR</strong><small>Загрузка и распознавание</small></span>
       </button>
       <a class="side-link" href="#results" id="navReview"><span class="side-icon" aria-hidden="true">✓</span><span><strong>Проверка и реестр</strong><small>Цифры, машины, Excel</small></span></a>
       <a class="side-link" href="/analytics"><span class="side-icon" aria-hidden="true">▥</span><span><strong>Аналитика</strong><small>Рейсы, тоннаж, расходы ИИ</small></span></a>
@@ -41,8 +41,8 @@
     <section id="photoWorkspace" class="workspace-page">
       <div class="heading">
         <div>
-          <div class="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div>
-          <h1>Распознавание рукописных журналов</h1>
+          <div class="eyebrow">TENSEI / ДОКУМЕНТЫ</div>
+          <h1>Распознавание фотографий</h1>
           <p>Загрузите фотографии, проверьте результат и сохраните Excel.</p>
         </div>
         <span class="local"><span aria-hidden="true">●</span> Черновик — на этом компьютере</span>
@@ -69,9 +69,11 @@
               </div>
               <input id="photoFiles" type="file" accept="image/*,.tif,.tiff,.bmp,.avif,.heic,.heif,.svg" hidden multiple>
               <div class="queue" id="fileQueue" aria-live="polite"></div>
+              <div id="uploadFeedback" class="upload-feedback" role="status" aria-live="polite">Добавьте фото — здесь появятся имя файла, следующий шаг и результат проверки.</div>
               <div class="actions upload-actions">
                 <button id="recognize" class="button button-primary" type="button">Обработать автоматически <span id="queuedCount"></span></button>
                 <button id="clearQueue" class="button button-ghost" type="button">Очистить очередь</button></div><label class="inline-check reprocess-option"><input type="checkbox" id="forceReprocess"> Распознать заново, даже если фото уже обработано (платный запрос)</label>
+              <label class="inline-check auto-run-choice"><input type="checkbox" id="autoRecognize"> После выбора автоматически запускать Cloud.ru (платные запросы, только если ключ настроен)</label>
               <div class="progress-track" aria-hidden="true"><div id="progressBar"></div></div>
               <div class="photo-status-steps" id="photoStatusSteps" role="group" aria-label="Этапы обработки"><span>Ожидание</span><span>Подготовка</span><span>Распознавание</span><span>Проверка</span><span>Готово</span></div>
               <p class="help" id="progressStatus" role="status">Выберите файлы для начала.</p>
