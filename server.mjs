@@ -11,7 +11,8 @@ import {listCloudModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto} from './lib/vision.mjs';
-import {analyzeLocalGrid} from './lib/optional-ocr.mjs';
+import {analyzeLocalGrid,analyzeDigitCells,analyzeLocalText} from './lib/optional-ocr.mjs';
+import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/local-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
@@ -85,7 +86,7 @@ function identity(input,cfg,template){
   const bytes=Buffer.from(String(input.image||''));
   if(bytes.length>28000000)throw Error('Слишком большой файл');
   return createHash('sha256').update(bytes).update(cfg.model)
-    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,cfg.gridSegmentation,cfg.autoPipeline,template.id])).digest('hex');
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,cfg.cvPreprocess,cfg.gridSegmentation,cfg.autoPipeline,cfg.digitCellOcr,template.id])).digest('hex');
 }
 async function recognize(input){
   const cfg=await settings();
@@ -126,8 +127,11 @@ async function recognize(input){
     const verifiedRows=markUnknownVehicles(result.rows,dictionary);
     const confidence=confidenceReport(verifiedRows);
     const documentType=classifyDocument(verifiedRows,template);
+    const photoGroup=photoBatchMetadata(task.name,verifiedRows,task.startedAt);
     const output={rows:verifiedRows,sourceId:result.sourceId,model:result.model,
-      confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
+      confidence,documentType,memoryHints,photoGroup,
+      missingRows:result.missingRows,documentHint:result.documentHint,cellConsensus:result.cellConsensus,
+      digitCells:result.digitCells,localOcr:result.localOcr,localVl:result.localVl,perspective:result.perspective,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,modelUsage:result.modelUsage,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
@@ -140,7 +144,9 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,modelUsage:result.modelUsage||[],trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,
+      quality:result.quality,layout:result.layout,rows:verifiedRows,confidence,documentType,memoryHints,photoGroup,
+      missingRows:result.missingRows,documentHint:result.documentHint,
+      cellConsensus:result.cellConsensus,digitCells:result.digitCells,
       localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
@@ -299,6 +305,30 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,{ok:true,savedAt,count:rows.length});
     }
     if(req.method==='DELETE'&&url.pathname==='/api/draft'){await fs.rm(draftPath,{force:true});return send(res,200,{ok:true})}
+    if(req.method==='POST'&&url.pathname==='/api/local-recognize'){
+      const input=await json(req);
+      if(typeof input.image!=='string')throw Error('Нужна фотография');
+      const prepared=await improvePhoto(input.image,{enhance:true,compact:false});
+      const [layoutResult,digitResult,textResult]=await Promise.allSettled([
+        analyzeLocalGrid(prepared.image,{width:prepared.report.width,
+          height:prepared.report.height,url:process.env.TENSEI_PADDLE_URL}),
+        analyzeDigitCells(prepared.image,{url:process.env.TENSEI_PADDLE_URL}),
+        analyzeLocalText(prepared.image,{url:process.env.TENSEI_PADDLE_URL})
+      ]);
+      const layout=layoutResult.status==='fulfilled'?layoutResult.value:null;
+      const digits=digitResult.status==='fulfilled'?digitResult.value:null;
+      const texts=textResult.status==='fulfilled'?textResult.value:null;
+      if(!layout&&!digits&&!texts)
+        throw Error('Локальные OCR-модули недоступны. Установите OpenCV и PaddleOCR.');
+      return send(res,200,{localOnly:true,cloudCalls:0,verified:false,
+        rows:[],layout, digitCells:digits,
+        documentHint:classifyFromLayout(layout,texts,BUILTIN_TEMPLATES),
+        cellConsensus:localOcrConsensus(texts,{recognizedCells:
+          (digits?.cells||[]).map(x=>({bbox:x.bbox,text:x.text}))}),
+        warnings:['Локальное распознавание не подтверждено оператором; цифры не внесены в реестр.'],
+        errors:[layoutResult,digitResult,textResult].filter(x=>x.status==='rejected')
+          .map(x=>String(x.reason?.message||x.reason).slice(0,130))});
+    }
     if(req.method==='POST'&&url.pathname==='/api/layout'){
       const input=await json(req);
       if(typeof input.image!=='string')throw Error('Нужна фотография');
