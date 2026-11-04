@@ -14,6 +14,8 @@ import {improvePhoto} from './lib/vision.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {perceptualHash,hashDistance} from './lib/vision-optimizer.mjs';
+import {classifyDocument,confidenceReport,normalizeMemory,approvedHints} from './lib/document-intelligence.mjs';
+import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=process.env.TENSEI_DATA_DIR ? path.resolve(process.env.TENSEI_DATA_DIR) : path.join(root,'data');
@@ -23,6 +25,9 @@ const tasksPath=path.join(dataDir,'tasks.json');
 const templatesPath=path.join(dataDir,'templates.json');
 const sourceDir=path.join(dataDir,'sources');
 const photoReportsDir=path.join(dataDir,'photo-reports');
+const memoryPath=path.join(dataDir,'approved-memory.json');
+const photoQueue=new SerialQueue();
+async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.readFile(memoryPath,'utf8')))}catch(e){if(e.code==='ENOENT')return {vehicles:[],drivers:[]};throw e}}
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
@@ -111,7 +116,11 @@ async function recognize(input){
     const filename=path.join(sourceDir,result.sourceId+'.jpg');
     await fs.writeFile(filename,Buffer.from(result.image.slice('data:image/jpeg;base64,'.length),'base64'));
     const similar=(await tasks()).filter(t=>t.status==='done'&&t.imageHash&&hashDistance(t.imageHash,result.imageHash)<=4).slice(0,3).map(t=>({id:t.id,name:t.name}));
+    const confidence=confidenceReport(result.rows);
+    const documentType=classifyDocument(result.rows,template);
+    const memoryHints=approvedHints(result.rows,await approvedMemory());
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
+      confidence,documentType,memoryHints,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
@@ -124,7 +133,7 @@ async function recognize(input){
       fallbackFrom:result.fallbackFrom||null,attempts:result.attempts,
       usage:result.usage||null,trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
-      quality:result.quality,rows:result.rows,
+      quality:result.quality,rows:result.rows,confidence,documentType,memoryHints,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
     await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
@@ -225,6 +234,19 @@ const server=http.createServer(async(req,res)=>{
         key:process.env.TENSEI_MINERU_KEY});
       return send(res,200,output);
     }
+    if(req.method==='GET'&&url.pathname==='/api/ai-monitor'){
+      return send(res,200,{...summarizeUsage(await tasks()),queuePending:photoQueue.pending});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/approved-memory'){
+      return send(res,200,await approvedMemory());
+    }
+    if(req.method==='POST'&&url.pathname==='/api/approved-memory'){
+      const payload=await json(req);
+      if(payload.confirmed!==true)throw Error('Справочник обновляется только после явного подтверждения');
+      const memory=normalizeMemory(payload);
+      await writeJson(memoryPath,memory);
+      return send(res,200,{ok:true,vehicles:memory.vehicles.length,drivers:memory.drivers.length});
+    }
     if(req.method==='GET'&&url.pathname==='/api/tasks'){
       return send(res,200,{tasks:(await tasks()).map(({rows,hash,comparison,...x})=>({...x,rowCount:rows?.length||0}))});
     }
@@ -264,7 +286,10 @@ const server=http.createServer(async(req,res)=>{
       const image=await improvePhoto(input.image,{enhance:false});
       return send(res,200,{quality:image.report,format:image.format});
     }
-    if(req.method==='POST'&&url.pathname==='/api/recognize')return send(res,200,await recognize(await json(req)));
+    if(req.method==='POST'&&url.pathname==='/api/recognize'){
+      const input=await json(req);
+      return send(res,200,await photoQueue.enqueue(()=>recognize(input)));
+    }
     if(req.method==='POST'&&url.pathname==='/api/export'){
       const rows=(await json(req)).rows;
       const file=await excel(rows);
