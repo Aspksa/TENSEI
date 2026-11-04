@@ -41,3 +41,6 @@ tbody tr[data-row]:focus-within{outline:1px solid #c6dcea}
 #detectGrid{align-self:flex-start;margin-bottom:8px;font-size:12px}
 #gridOverlay{position:absolute;inset:0;pointer-events:none;z-index:1}
 #gridOverlay .grid-cell{position:absolute;box-sizing:border-box;border:1px solid rgba(0,116,235,.68);background:rgba(0,116,235,.06)}
+
+.humor-caption{margin:7px 0 9px;padding:9px 11px;border-left:3px solid #64748b;border-radius:6px;background:#eef3f7;color:#334155;font-size:12px;line-height:1.5;font-style:italic}
+.humor-caption[hidden]{display:none}
