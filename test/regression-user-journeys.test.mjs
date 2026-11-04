@@ -119,7 +119,8 @@ test('photo queue starts mocked Cloud.ru processing after explicit click and pop
     $('photoFiles').dispatchEvent(new dom.window.Event('change',{bubbles:true}));
     assert.equal($('recognize').disabled,false);
     $('recognize').click();
-    await wait(()=>recognized===1&&$('metricRows').textContent==='1',2500);
+    await wait(()=>recognized===1&&$('metricRows').textContent==='1'&&
+      $('uploadFeedback').textContent.includes('Готово'),2500);
     assert.equal($('fileQueue').children.length,0);
     assert.match($('uploadFeedback').textContent,/Готово/);
     assert.ok(dom.window.document.querySelector('input[aria-label="Номер ТС; строка 1"]'));
