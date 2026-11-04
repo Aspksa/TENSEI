@@ -215,10 +215,12 @@
               <span><strong>Выбрать CSV-файл</strong><small id="legionCsvFileName">Файл не выбран</small></span>
               <span class="legion-file-action">Обзор…</span>
             </label>
-            <input id="legionCsvFile" type="file" accept=".csv,text/csv" hidden>
+            <input id="legionCsvFile" type="file" accept=".csv,text/csv" multiple hidden>
+            <p class="help">Можно выбрать сразу до 8 файлов CSV. Совпадающие рейсы не удаляются автоматически.</p>
+            <div id="legionStage" class="legion-stage" role="status">Ожидание CSV · 0 запросов ИИ</div>
             <p id="legionImportStatus" class="help">После выбора файл будет прочитан локальным сервером TENSEI.</p>
             <label class="inline-check legion-check"><input id="legionAutoGenerate" type="checkbox" checked>
-              Автоматически создавать отчёты после загрузки CSV, если нет ошибок строк</label>
+              Автоматически создавать отчёты только после успешного контроля всех данных</label>
           </article>
           <article class="card legion-card">
             <div class="legion-card-header"><span class="legion-step">02</span>
@@ -230,14 +232,16 @@
                 <th>Дата</th><th>Товар</th><th>Рейсов</th><th>Машин</th><th>Нетто, т</th></tr></thead>
                 <tbody id="legionGroups"></tbody></table></div>
               <div class="legion-errors" id="legionErrors" hidden></div>
+              <div class="legion-audit" id="legionAudit" role="status" hidden></div>
               <div class="legion-unknown" id="legionUnknown" hidden></div>
-              <div class="legion-settings-inline">
+              <details class="legion-advanced"><summary>Настройки коэффициента и пропуска ошибочных CSV-строк</summary><div class="legion-settings-inline">
                 <label class="field">Коэффициент / расстояние
                   <input id="legionCoefficient" type="text" inputmode="decimal" value="1,55">
                 </label>
                 <label class="inline-check"><input id="legionAcceptSkipped" type="checkbox">
                   Разрешить отчёт без ошибочных строк (только после проверки ошибок)</label>
               </div>
+              </details>
               <div class="actions">
                 <button id="legionGenerate" type="button" class="button button-primary">Создать Excel-отчёты</button>
                 <button id="legionDownloadZip" type="button" class="button button-outline" disabled>Скачать ZIP</button>
@@ -259,6 +263,7 @@
               <div><h2>База автомобилей</h2><p>Марка и водитель — только из базы, без догадок.</p></div>
             </div>
             <p class="help" id="legionBaseStatus">Загружаю базу ТС…</p>
+            <details class="legion-advanced"><summary>Импорт, исправление и поиск автомобилей</summary>
             <label class="legion-file-picker compact" for="legionMasterFile">
               <span class="legion-file-icon">⇧</span><span><strong>Импорт из Excel</strong>
                 <small>«База ТС» или отчёт «01.11 Хороль.xlsx»</small></span>
@@ -275,7 +280,8 @@
             <div class="legion-subtitle">Справочник</div>
             <input id="legionBaseSearch" type="search" placeholder="Поиск по номеру или фамилии">
             <div class="legion-base-list" id="legionBaseList"></div>
-            <p class="help">Неизвестные номера А905УО и С301СВ будут отмечены «НЕТ В БАЗЕ», пока вы не добавите их данные.</p>
+            <p class="help">Неизвестные номера не заполняются догадками; для финальных отчётов нужно подтвердить справочник.</p>
+            </details>
           </article>
         </div>
       </div>
