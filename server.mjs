@@ -17,6 +17,8 @@ import {photoBatchMetadata,classifyFromLayout,localOcrConsensus} from './lib/loc
 import {plateCandidates,findCrossSourceDuplicates,reviewPriority} from './lib/photo-review-intelligence.mjs';
 import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
+import {unifyFleet,fleetFiltered} from './lib/fleet-statistics.mjs';
+import {fleetStatisticsXlsx} from './lib/fleet-excel.mjs';
 import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
@@ -221,6 +223,42 @@ async function excel(raw){
 }
 async function getDraft(){try{const x=JSON.parse(await fs.readFile(draftPath,'utf8'));return {rows:Array.isArray(x.rows)?x.rows:[],savedAt:x.savedAt||null}}
   catch(e){if(e.code==='ENOENT')return {rows:[],savedAt:null};throw Error('Не удалось открыть сохранённый черновик')}}
+async function readFleetImports(){
+  const indexPath=path.join(dataDir,'legion','imports-index.json');
+  let index;try{index=JSON.parse(await fs.readFile(indexPath,'utf8'))}
+  catch(e){if(e.code==='ENOENT')return [];throw Error('Не удалось открыть историю CSV «Легиона»')}
+  if(!Array.isArray(index))throw Error('История импортов CSV повреждена');
+  const out=[];let count=0;
+  for(const entry of index.slice(0,50)){
+    if(!/^[0-9a-f-]{36}$/i.test(String(entry.id||'')))continue;
+    const file=path.join(dataDir,'legion','imports',entry.id+'.json');
+    let data;try{data=JSON.parse(await fs.readFile(file,'utf8'))}
+    catch(e){if(e.code==='ENOENT')continue;throw Error('Ошибка чтения CSV '+entry.id)}
+    if(!Array.isArray(data.rows))continue;
+    count+=data.rows.length;
+    if(count>50000)throw Error('История превышает 50 000 рейсов. Выберите меньший архив для анализа.');
+    out.push({id:entry.id,importedAt:String(entry.importedAt||''),rows:data.rows});
+  }
+  return out;
+}
+async function fleetData(){
+  const [draft,imports,vehicles]=await Promise.all([
+    getDraft(),readFleetImports(),
+    fs.readFile(path.join(dataDir,'legion','vehicles.json'),'utf8')
+      .then(s=>JSON.parse(s)).catch(e=>{if(e.code==='ENOENT')return [];throw e})
+  ]);
+  return unifyFleet({imports,photoRows:draft.rows,vehicles:Array.isArray(vehicles)?vehicles:[]});
+}
+function fleetOptions(url){
+  const vehicle=String(url.searchParams.get('vehicle')||'all').slice(0,50);
+  const product=String(url.searchParams.get('product')||'all').slice(0,120);
+  const from=String(url.searchParams.get('from')||'');
+  const to=String(url.searchParams.get('to')||'');
+  if((from&&!/^\d{4}-\d{2}-\d{2}$/.test(from))||
+    (to&&!/^\d{4}-\d{2}-\d{2}$/.test(to)))
+    throw Error('Даты фильтра должны быть ГГГГ-ММ-ДД');
+  return {vehicle,product,from,to};
+}
 const handleLegion=createLegionHandler({root,dataDir,json,send});
 const server=http.createServer(async(req,res)=>{
   try{
@@ -399,6 +437,24 @@ const server=http.createServer(async(req,res)=>{
       res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, max-age=60',
         'X-Content-Type-Options':'nosniff'});
       return res.end(buffer);
+    }
+    if(req.method==='GET'&&url.pathname==='/api/fleet/stats'){
+      const data=await fleetData(),options=fleetOptions(url),filtered=fleetFiltered(data,options);
+      return send(res,200,{totals:filtered.totals,vehicles:filtered.vehicles,
+        products:filtered.products,daily:filtered.daily,hours:filtered.hours,
+        trips:filtered.rows.slice(0,2000),review:data.review.slice(0,200),
+        audit:data.totals,sourcePolicy:data.sourcePolicy,note:data.note,
+        verified:false,filters:options,catalog:{vehicles:data.vehicles.map(v=>v.plate),
+          products:data.products.map(p=>p.name)},tripsTruncated:filtered.rows.length>2000});
+    }
+    if(req.method==='GET'&&url.pathname==='/api/fleet/export'){
+      const data=await fleetData(),options=fleetOptions(url);
+      const bytes=await fleetStatisticsXlsx(data,options);
+      res.writeHead(200,{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition':"attachment; filename*=UTF-8''"+encodeURIComponent('TENSEI_Автопарк.xlsx'),
+        'Content-Length':bytes.byteLength,'Cache-Control':'no-store',
+        'X-Content-Type-Options':'nosniff'});
+      return res.end(bytes);
     }
     if(req.method==='GET'&&url.pathname==='/api/draft')return send(res,200,await getDraft());
     if(req.method==='POST'&&url.pathname==='/api/draft'){
