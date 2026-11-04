@@ -293,7 +293,8 @@ const server=http.createServer(async(req,res)=>{
       '/legion.css':['legion.css','text/css; charset=utf-8'],
       '/analytics':['analytics.html','text/html; charset=utf-8'],
       '/analytics.js':['analytics.js','text/javascript; charset=utf-8'],
-      '/analytics.css':['analytics.css','text/css; charset=utf-8']};
+      '/analytics.css':['analytics.css','text/css; charset=utf-8'],
+      '/design-system.css':['design-system.css','text/css; charset=utf-8']};
     if(req.method==='GET'&&staticFiles[url.pathname]){
       const [filename,type]=staticFiles[url.pathname];
       res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});
