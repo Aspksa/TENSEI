@@ -334,6 +334,22 @@ $('detectGrid').onclick=async()=>{
   }catch(e){status('Локальное выделение недоступно: '+e.message+'. Проверьте запуск Paddle-сервиса и OpenCV.','error')}
   finally{button.disabled=false}
 };
+$('perspectivePreview').onclick=async()=>{
+  if(state.busy||!state.queue.length)return status('Выберите фотографию.','info');
+  const button=$('perspectivePreview'),panel=$('perspectiveResult');
+  button.disabled=true;
+  try{
+    const file=state.queue[0];
+    const result=await api('perspective-preview',{image:await fileData(file)});
+    $('perspectiveNote').textContent=result.applied?
+      'Исправление перспективы показано отдельно. Исходник и координаты OCR не изменены.':
+      'Надёжный контур листа не найден: '+(result.reason||'оригинал сохранён');
+    $('perspectiveImage').hidden=!result.applied;
+    if(result.applied)$('perspectiveImage').src=result.image;
+    panel.hidden=false;
+  }catch(e){status('Не удалось построить предпросмотр: '+e.message,'error')}
+  finally{button.disabled=false}
+};
 $('localRead').onclick=async()=>{
   if(state.busy||!state.queue.length)return status('Выберите фотографию для локального чтения.','info');
   const file=state.queue[0],button=$('localRead'),out=$('localReadResults');
@@ -368,6 +384,7 @@ $('localRead').onclick=async()=>{
 function showPreview(file){
   ++cropRequest;$('cropReview').hidden=true;$('cellReviewToolbar').hidden=true;
   gridBoxes=[];$('gridOverlay').replaceChildren();$('localReadResults').hidden=true;
+  $('perspectiveResult').hidden=true;
   if(state.previewUrl)URL.revokeObjectURL(state.previewUrl);
   state.previewUrl=null;
   const img=$('previewImage');img.hidden=true;$('previewEmpty').hidden=false;
@@ -619,7 +636,7 @@ $('saveTemplate').onclick=async()=>{
 };
 let reviewCells=[],reviewSourceId='',cropRequest=0;
 async function showRowCrop(sourceId,bbox,label='Строка'){
-  const crop=$('cropReview'),note=$('cropStatus'),img=$('cropPreview');
+  const crop=$('cropReview'),note=$('cropStatus'),img=$('cropPreview'),side=$('reviewSideCrop');
   const request=++cropRequest;
   if(!sourceId||!Array.isArray(bbox)||bbox.length!==4){
     crop.hidden=true;return;
@@ -629,6 +646,7 @@ async function showRowCrop(sourceId,bbox,label='Строка'){
     const result=await api('row-crop',{sourceId,bbox});
     if(request!==cropRequest)return;
     img.src=result.image;img.hidden=false;
+    side.src=result.image;side.hidden=false;
     note.textContent=label+' · координаты приблизительные, OCR не подтверждён. Сверьте с целой страницей.';
   }catch(e){if(request===cropRequest)note.textContent='Увеличение недоступно: '+e.message}
 }
@@ -659,8 +677,14 @@ function showSource(row){
   gridBoxes=[];$('gridOverlay').replaceChildren();
   reviewCells=[];reviewSourceId='';$('cellReviewToolbar').hidden=true;
   $('cropReview').hidden=true;++cropRequest;
-  if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';return}
+  $('reviewSideCrop').hidden=true;
+  if(!row.sourceId){$('qualityStatus').textContent='У этой строки нет сохранённой фотографии.';
+    $('reviewSideImage').hidden=true;$('reviewSideCrop').hidden=true;
+    $('reviewSideStatus').textContent='Для строки нет исходного снимка.';return}
   const src='/api/source/'+row.sourceId;
+  $('reviewSideImage').src=src;$('reviewSideImage').hidden=false;
+  $('reviewSideStatus').textContent=(row.source||'Сохранённый снимок')+
+    ' · '+(row.bbox?'выделена строка OCR':'геометрия строки не определена');
   const img=$('previewImage'),overlay=$('highlightBox');
   $('previewFilename').textContent=row.source||'Сохранённый снимок';
   $('previewEmpty').hidden=true;
