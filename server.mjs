@@ -242,7 +242,14 @@ const server=http.createServer(async(req,res)=>{
       return send(res,200,output);
     }
     if(req.method==='GET'&&url.pathname==='/api/ai-monitor'){
-      return send(res,200,{...summarizeUsage(await tasks()),queuePending:photoQueue.pending});
+      const summary=summarizeUsage(await tasks());
+      let watch={attempted:[],events:[]};
+      try{watch=JSON.parse(await fs.readFile(watchedStatePath,'utf8'))}
+      catch(e){if(e.code!=='ENOENT')throw e}
+      return send(res,200,{...summary,queuePending:photoQueue.pending,
+        watchEnabled:Boolean(process.env.TENSEI_WATCH_DIR),
+        watchedFileCount:Array.isArray(watch.attempted)?watch.attempted.length:0,
+        recentWatchEvents:Array.isArray(watch.events)?watch.events.slice(0,20):[]});
     }
     if(req.method==='GET'&&url.pathname==='/api/approved-memory'){
       return send(res,200,await approvedMemory());
