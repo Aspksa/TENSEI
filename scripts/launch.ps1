@@ -47,21 +47,25 @@ try {
   if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) { throw 'Portable npm installation is damaged.' }
   Write-Host '[2/3] Checking dependencies...'
   $marker = Join-Path $runtime 'dependency-architecture.txt'
+  $packageHash = (Get-FileHash -LiteralPath (Join-Path $root 'package.json') -Algorithm SHA256).Hash
+  $markerValue = $arch + '|' + $packageHash
   $nodeModules = Join-Path $root 'node_modules'
   $previous = if (Test-Path -LiteralPath $marker) { (Get-Content -LiteralPath $marker -Raw).Trim() } else { '' }
-  if ($previous -ne $arch -or -not (Test-Path -LiteralPath (Join-Path $nodeModules 'sharp'))) {
+  if ($previous -ne $markerValue -or -not (Test-Path -LiteralPath (Join-Path $nodeModules 'sharp')) -or -not (Test-Path -LiteralPath (Join-Path $nodeModules 'exceljs')) -or -not (Test-Path -LiteralPath (Join-Path $nodeModules 'bmp-js'))) {
     Write-Host 'Installing platform dependencies on external drive...'
-    if ($previous -and $previous -ne $arch -and (Test-Path -LiteralPath $nodeModules)) {
+    if ($previous -and ($previous -split '\|')[0] -ne $arch -and (Test-Path -LiteralPath $nodeModules)) {
       Remove-Item -LiteralPath $nodeModules -Recurse -Force
     }
     $env:npm_config_cache = Join-Path $runtime 'npm-cache'
     $env:npm_config_update_notifier = 'false'
     $env:npm_config_prefix = Join-Path $runtime 'npm-prefix'
-    & $node $npm install --no-audit --no-fund --omit=dev
+    & $node $npm install --no-audit --no-fund --omit=dev --loglevel=error
     if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit $LASTEXITCODE)" }
-    Set-Content -LiteralPath $marker -Value $arch -Encoding ascii
+    Set-Content -LiteralPath $marker -Value $markerValue -Encoding ascii
   }
-  Write-Host '[3/3] Checking code and starting the local interface...'
+  Write-Host '[3/3] Verifying installation and starting the local interface...'
+  & $node -e "require('sharp');require('bmp-js');require('exceljs')"
+  if ($LASTEXITCODE -ne 0) { throw 'Dependency check failed. Remove node_modules and restart to reinstall.' }
   & $node --check (Join-Path $root 'server.mjs')
   if ($LASTEXITCODE -ne 0) { throw 'Server syntax check failed.' }
   & $node --check (Join-Path $root 'app.js')
