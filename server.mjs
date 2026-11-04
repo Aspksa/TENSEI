@@ -31,8 +31,8 @@ async function approvedMemory(){try{return normalizeMemory(JSON.parse(await fs.r
 
 async function settings(){
   try{const o=JSON.parse(await fs.readFile(settingsPath,'utf8'));return {key:String(o.key||''),model:String(o.model||DEFAULT_MODEL),fallback:o.fallback!==false,
-    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
-  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
+    cropRecovery:o.cropRecovery!==false,enhance:o.enhance!==false,paddle:o.paddle===true,chandra:o.chandra===true,mineru:o.mineru===true,localText:o.localText===true,localVl:o.localVl===true,costMode:['off','economy','balanced','quality'].includes(o.costMode)?o.costMode:'off',maxCloudCalls:Math.max(1,Math.min(6,Number(o.maxCloudCalls)||3))}}
+  catch(e){if(e.code==='ENOENT')return {key:'',model:DEFAULT_MODEL,fallback:true,cropRecovery:true,enhance:true,paddle:false,chandra:false,mineru:false,localText:false,localVl:false,costMode:'off',maxCloudCalls:3};throw Error('Ошибка чтения настроек')}
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
@@ -82,7 +82,7 @@ function identity(input,cfg,template){
   const bytes=Buffer.from(String(input.image||''));
   if(bytes.length>28000000)throw Error('Слишком большой файл');
   return createHash('sha256').update(bytes).update(cfg.model)
-    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,template.id])).digest('hex');
+    .update(JSON.stringify([cfg.enhance,cfg.cropRecovery,cfg.paddle,cfg.chandra,cfg.localText,cfg.localVl,template.id])).digest('hex');
 }
 async function recognize(input){
   const cfg=await settings();
@@ -120,7 +120,7 @@ async function recognize(input){
     const documentType=classifyDocument(result.rows,template);
     const memoryHints=approvedHints(result.rows,await approvedMemory());
     const output={rows:result.rows,sourceId:result.sourceId,model:result.model,
-      confidence,documentType,memoryHints,
+      confidence,documentType,memoryHints,localOcr:result.localOcr,localVl:result.localVl,
       imageHash:result.imageHash,similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       warnings:result.warnings,quality:result.quality,layout:result.layout,
       comparison:result.comparison,mineruTask:result.mineruTask,attempts:result.attempts,
@@ -134,6 +134,7 @@ async function recognize(input){
       usage:result.usage||null,trace:[...trace],warnings:result.warnings,
       similarPhotos:similar,cloudCalls:result.cloudCalls,costMode:result.costMode,
       quality:result.quality,rows:result.rows,confidence,documentType,memoryHints,
+      localOcr:result.localOcr,localVl:result.localVl,
       files:{preparedImage:'sources/'+result.sourceId+'.jpg'}
     });
     await updateTask({...task,...output,status:'done',phase:'Готово',progress:100,trace,finishedAt:new Date().toISOString()});
@@ -200,6 +201,7 @@ const server=http.createServer(async(req,res)=>{
     if(req.method==='GET'&&url.pathname==='/api/settings'){
       const cfg=await settings();return send(res,200,{model:cfg.model,hasKey:!!cfg.key,models:MODELS,formats:FORMATS,fallback:cfg.fallback,
         cropRecovery:cfg.cropRecovery,enhance:cfg.enhance,paddle:cfg.paddle,chandra:cfg.chandra,mineru:cfg.mineru,
+        localText:cfg.localText,localVl:cfg.localVl,
         costMode:cfg.costMode,maxCloudCalls:cfg.maxCloudCalls});
     }
     if(req.method==='POST'&&url.pathname==='/api/settings'){
@@ -211,6 +213,7 @@ const server=http.createServer(async(req,res)=>{
       await writeJson(settingsPath,{key,model,fallback:payload.fallback!==false,
         cropRecovery:payload.cropRecovery!==false,enhance:payload.enhance!==false,
         paddle:payload.paddle===true,chandra:payload.chandra===true,mineru:payload.mineru===true,
+        localText:payload.localText===true,localVl:payload.localVl===true,
         costMode:['off','economy','balanced','quality'].includes(payload.costMode)?payload.costMode:'off',
         maxCloudCalls:Math.max(1,Math.min(6,Number(payload.maxCloudCalls)||3))});
       return send(res,200,{ok:true,hasKey:!!key,model});
