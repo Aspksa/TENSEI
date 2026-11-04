@@ -333,6 +333,7 @@ server.on('error',e=>{console.error('Не удалось открыть лока
 server.listen(requestedPort,'127.0.0.1',()=>{
   const address='http://127.0.0.1:'+server.address().port;
   console.log('TENSEI_READY '+address);
+  enableWatcher().catch(e=>console.error('TENSEI watcher:',e.message));
   if(process.platform==='win32'&&process.env.TENSEI_NO_BROWSER!=='1')
     execFile('rundll32.exe',['url.dll,FileProtocolHandler',address],()=>{});
 });
