@@ -4,6 +4,17 @@ const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:P
 const columns=['tripDate','time','vehicle','driver','tare','gross','net','note'];
 const titles={tripDate:'Дата рейса',time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
 
+async function updateRapidStatus(){
+  try{
+    const response=await fetch('/api/ocr-health');
+    if(!response.ok)return;
+    const data=await response.json(),target=$('rapidOCRStatus');
+    if(target)target.textContent=data.rapid?.available?
+      'RapidOCR CPU готов · локальная обработка по одному запросу':
+      'RapidOCR CPU необязателен · '+(data.rapid?.reason||'используется существующий OCR');
+  }catch{const target=$('rapidOCRStatus');if(target)target.textContent='RapidOCR CPU не настроен'}
+}
+void updateRapidStatus();
 function status(message,kind='info'){
   const box=$('notice');
   box.hidden=!message;
