@@ -20,7 +20,7 @@ import uvicorn
 
 app = FastAPI(title="TENSEI optional PaddleOCR")
 _model = None
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 class Photo(BaseModel):
