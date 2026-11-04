@@ -162,7 +162,11 @@ const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://127.0.0.1');
     const staticFiles={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/styles.css':['styles.css','text/css; charset=utf-8'],
       '/legion.js':['legion.js','text/javascript; charset=utf-8'],
-      '/legion.css':['legion.css','text/css; charset=utf-8']};
+      '/legion.css':['legion.css','text/css; charset=utf-8'],
+      '/analytics.js':['analytics.js','text/javascript; charset=utf-8'],
+      '/analytics.css':['analytics.css','text/css; charset=utf-8'],
+      '/scans.js':['scans.js','text/javascript; charset=utf-8'],
+      '/scans.css':['scans.css','text/css; charset=utf-8']};
     if(req.method==='GET'&&staticFiles[url.pathname]){
       const [filename,type]=staticFiles[url.pathname];
       res.writeHead(200,{'Content-Type':type,'Cache-Control':'no-store'});
