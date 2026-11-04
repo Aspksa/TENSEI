@@ -1,0 +1,141 @@
+/* TENSEI · unified visual language — industrial operations, clear status, minimal noise.
+   Shared by Photo, Legion and Analytics; no network fonts or heavyweight UI runtime. */
+:root{
+  color-scheme:light;
+  --bg:#f2f5f8;--paper:#fff;--text:#19283b;--muted:#62748a;
+  --border:#dce5ee;--primary:#155f73;--primary-hover:#0e4b5c;
+  --subtle:#e7f2f3;--success:#147553;--error:#a73c3c;--radius:14px;
+  --navy:#16283d;--navy-2:#203750;--teal:#137c88;
+  --shadow:0 10px 32px rgba(21,41,61,.045);
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:Inter,"Segoe UI",system-ui,-apple-system,sans-serif;
+  font-size:14px;line-height:1.55}
+button,select,input,textarea{font:inherit}
+a{color:var(--primary)}
+.topbar{background:var(--navy);border:0}
+.topbar-inner{max-width:1650px;padding:16px 28px}
+.brand{color:#f5f9fd;gap:13px}
+.logo{width:43px;height:43px;background:#22a3a8;color:#fff;border-radius:11px;
+  font:800 23px/1 "Segoe UI",sans-serif;box-shadow:0 8px 22px rgba(0,0,0,.2)}
+.brand strong{font-weight:780;letter-spacing:2px}
+.brand small{color:#b2c5d7;letter-spacing:.15px}
+.toplink{color:#bbebed}
+.connection{color:#d4e2ef;font-weight:550}
+.connection.ok::before{background:#31c58c}
+.connection.error::before{background:#fb8278}
+.app-shell{max-width:1650px;grid-template-columns:230px minmax(0,1fr);
+  min-height:calc(100vh - 75px)}
+.side-menu{background:#192d43;color:#deebf7;border-right:1px solid #2a4057;
+  padding:27px 13px;gap:7px;top:0;height:100vh}
+.side-title{color:#859eae;margin-bottom:13px}
+.side-link{color:#c0d2e2;min-height:62px;border-radius:10px;padding:9px 11px}
+.side-link strong{font-size:13px}
+.side-link small{color:#8fa7bd}
+.side-icon{background:#274059;color:#b0c6d9}
+.side-link:hover{background:#27415a;color:#fff}
+.side-link.active{background:#294b61;color:#fff;border-color:#3a6979;
+  box-shadow:inset 3px 0 #38b4b3}
+.side-link.active .side-icon{background:#166e79;color:#e2ffff}
+.side-bottom{color:#b5c7d6;border-color:#34495c}
+.side-tools>summary{color:#b0c3d5;padding:11px}
+.app-shell>.container{padding:30px clamp(18px,3vw,42px) 64px}
+.heading{align-items:flex-start;margin-bottom:22px}
+.heading h1{font-size:clamp(27px,2.4vw,36px);font-weight:760;letter-spacing:-1px}
+.heading p{font-size:14px;max-width:650px;color:var(--muted)}
+.eyebrow{color:#127b86;font-weight:800;letter-spacing:1.6px}
+.local{padding:8px 12px;background:#e8f5f1;color:#24785e;border:1px solid #c4e3d9;
+  border-radius:20px}
+.card,.legion-card{border-radius:16px;border:1px solid #dde6ef;
+  box-shadow:var(--shadow);background:#fff}
+.card-heading{padding:23px 25px}
+.card-heading-text strong{font-size:17px;letter-spacing:-.2px}
+.step,.legion-step{background:#e5f3f2;color:#0e6875;border-color:#c8e5e3}
+.button{border-radius:9px;min-height:43px;font-weight:700;transition:background .15s,border-color .15s,transform .15s}
+.button-primary{background:var(--primary);border-color:var(--primary);color:white}
+.button-primary:hover:not(:disabled){background:#0d4c60;transform:translateY(-1px)}
+.button-outline{color:var(--primary);background:white;border-color:#bdd2da}
+.button-outline:hover:not(:disabled){background:#edf7f7;border-color:#74bbc0}
+.button-ghost{color:#62778b}
+.button:disabled{opacity:.55}
+:focus-visible{outline:3px solid #57b4bb!important;outline-offset:2px}
+.field input,.field select,.searchbox input,#legionBaseSearch{
+  border-radius:9px;border:1px solid #c8d6e1;min-height:42px;color:var(--text);
+  background:#fff;box-shadow:inset 0 1px 2px rgba(22,40,56,.02)}
+.field input:focus,.field select:focus,.searchbox input:focus{border-color:#2e9ca4}
+.card-upload{padding-bottom:24px}
+.dropzone{height:auto;min-height:197px;background:#f6fbfa;border:2px dashed #aacbd0;
+  border-radius:14px;gap:6px}
+.dropzone:hover,.dropzone.dragging,.dropzone:focus-visible{background:#eaf7f5;border-color:#17828e}
+.upload-icon{width:48px;height:48px;background:#e1f2f1;color:#136b77;font-size:27px}
+.dropzone strong{font-size:17px;color:#1a3546}
+.dropzone>span:not(.upload-icon){font-size:13px}
+.dropzone small{color:#74899b;font-size:11px}
+.upload-grid{gap:24px;padding:0 25px}
+.upload-feedback{margin:12px 0;padding:12px 14px;border:1px solid #bcdadf;border-radius:10px;
+  background:#f0faf9;color:#285f69;font-weight:650;font-size:13px;line-height:1.45}
+.upload-actions{display:flex;align-items:center;margin-top:12px}
+.upload-actions #recognize{flex:1;min-width:210px;font-size:14px;white-space:normal;min-height:50px}
+.auto-run-choice{display:flex;align-items:flex-start;margin:13px 0 0;font-size:12px}
+.auto-run-choice input{margin-top:4px;flex-shrink:0}
+.queue{max-height:160px}
+.queue-item{padding:10px 6px;border-bottom:1px solid #e5edf3;font-size:13px}
+.progress-track{height:8px;background:#e7eff3;margin-top:17px}
+.progress-track div{background:linear-gradient(90deg,#155f73,#20a2a5)}
+.photo-status-steps{gap:7px}
+.photo-status-steps span{border-radius:7px;padding:6px 10px;font-size:11px}
+.photo-status-steps span.active{background:#dff3f3;border-color:#70babd;color:#0e6772}
+.preview{background:#f9fbfd;border:1px solid #e0e8ef;border-radius:13px;padding:15px;align-self:start}
+.preview-surface{height:310px;background:#edf2f5;border-color:#dce5ec}
+.preview-heading{font-weight:600;color:#557085}
+#qualityStatus{margin:0 0 11px;line-height:1.45}
+#rapidOCRStatus{font-size:11px}
+.preview .button-outline{font-size:12px;white-space:normal;min-height:36px}
+.result-summary{background:#f0f6f8;border-color:#dbe8ea;gap:26px}
+.result-summary strong{color:#153f52;font-size:20px}
+.table-scroll{background:white;border-color:#d8e3ea}
+th{background:#edf3f7;color:#536e81;font-size:11px;text-transform:none}
+td input[type=text]{font-size:13px}
+td input[type=text]:focus{border-color:#5baab1;background:#fff}
+.audit-item{background:#fffaf1;border-color:#f0dfbd}
+.review-side-panel{background:#f7fafc;border-color:#d8e5e9;border-radius:13px}
+.card-result,.card-settings{margin-top:19px}
+.legion-heading{margin-bottom:22px}
+.legion-stats>div{background:#fff;border-color:#dce6ec;border-radius:12px}
+.legion-stats strong{color:#164c5c}
+.legion-file-picker{background:#f6fbfa;border-color:#bcd9dd}
+.legion-stage{border-left-color:#17818d;background:#edf8f8;color:#285d68}
+.legion-badge{background:#e7f3f2;color:#0c6971;border-color:#b9dedc}
+.legion-card-header{border-color:#e3e9ef}
+.legion-audit{border-color:#e9d7b2}
+.legion-reconcile{margin-top:17px;padding-top:14px;border-top:1px solid var(--border)}
+.notice{border-radius:10px}
+.notice.error{background:#fff2f0;color:#8c3030}
+.notice.success{background:#ebf8f1;color:#1e7054}
+@media(max-width:1050px){
+  .app-shell{grid-template-columns:1fr}
+  .side-menu{position:relative;height:auto;min-height:0;padding:8px 14px;display:flex;
+    flex-direction:row;overflow-x:auto;gap:8px}
+  .side-title,.side-bottom{display:none}
+  .side-link{width:auto;min-width:150px;flex:1}
+  .app-shell>.container{padding:23px 18px 48px}
+}
+@media(max-width:740px){
+  .topbar-inner{padding:13px 16px}
+  .topbar-actions{gap:9px}
+  .connection{max-width:180px;font-size:11px}
+  .side-menu{padding:8px 10px}
+  .side-link{min-width:135px}
+  .side-link small{display:none}
+  .side-link{min-height:46px}
+  .heading{display:block}
+  .heading h1{font-size:27px}
+  .heading .local{display:inline-block;margin-top:12px}
+  .upload-grid{grid-template-columns:1fr;padding:0 16px}
+  .card-heading{padding:18px 16px}
+  .preview{padding:12px}
+  .preview-surface{height:245px}
+  .upload-actions #recognize{width:100%}
+  .legion-badge{display:none}
+}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.button{transition:none}}
