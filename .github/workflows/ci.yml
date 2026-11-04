@@ -1,0 +1,36 @@
+name: TENSEI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package.json
+      - name: Install runtime dependencies
+        run: npm install --no-audit --no-fund
+      - name: Check module syntax
+        run: |
+          node --check server.mjs
+          node --check app.js
+          node --check lib/records.mjs
+          node --check lib/images.mjs
+      - name: Test image conversion, anomalies and HTTP API
+        run: npm test
