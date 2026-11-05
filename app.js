@@ -60,7 +60,7 @@ function inspect(items){
     if(Number.isFinite(gross)&&Number.isFinite(tare)&&Number.isFinite(net)&&Math.abs(gross-tare-net)>1)issues.push('Брутто − тара ≠ нетто');
     if(Number.isFinite(net)&&net>45000)issues.push('Нетто больше 45 т');
     if(net===0)issues.push('Нулевой вес');
-    const fingerprint=[row.time,row.vehicle,row.tare,row.gross,row.net].join('|');
+    const fingerprint=[row.tripDate,row.time,row.vehicle,row.tare,row.gross,row.net].join('|');
     if(row.vehicle&&seen.has(fingerprint))issues.push('Возможная повторная запись');
     seen.add(fingerprint);
     return {row,index,issues};
