@@ -113,7 +113,8 @@ test('HTTP 404 does not re-send enlarged photo fragments to the same unavailable
     return new Response(JSON.stringify({error:{message:'model_not_found'}}),{status:404});
   };
   try{
-    await assert.rejects(()=>processPhoto({image:await imageData(),name:'not-found.png',
+    const image=await imageData();
+    await assert.rejects(()=>processPhoto({image,name:'not-found.png',
       cfg:{key:'mock',model:'qwen/qwen3-vl-235b-a22b-instruct',
         fallback:true,cropRecovery:true,enhance:false,paddle:false,chandra:false,
         costMode:'auto',maxCloudCalls:3},template:{id:'weights',columns:['ТС','Нетто']}}),
