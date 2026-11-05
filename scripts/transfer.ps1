@@ -90,7 +90,7 @@ function Import-Backup {
           $relative -match '(^|/)\.\.?(/|$)' -or
           $relative.Contains('\') -or $relative.Contains(':') -or
           $relative.Contains([char]0) -or
-          $relative -match '(?i)(^|/)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\.|/|$)' -or
+          $relative -match '(?i)(^|/)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|/|$)' -or
           $expected.ContainsKey($relative)) {
         throw "Unsafe or duplicate manifest path: $relative"
       }
