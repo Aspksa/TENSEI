@@ -84,7 +84,7 @@ test('exhausted unavailable models keep structured 404 status',async()=>{
   await assert.rejects(()=>recognizeWithFallback({...testArgs,fetcher:mock}),e=>{
     assert.ok(e instanceof CloudError);
     assert.equal(e.status,404);
-    assert.match(e.message,/Нет доступных резервных моделей/);
+    assert.match(e.message,/нет доступных резервных моделей/i);
     return true;
   });
 });
