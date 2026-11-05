@@ -240,7 +240,7 @@ async function readFleetImports(){
   try{
     const known=new Set(index.filter(x=>/^[0-9a-f-]{36}$/i.test(String(x?.id||''))).map(x=>x.id));
     const stored=await fs.readdir(path.join(dataDir,'legion','imports'));
-    const orphans=stored.filter(name=>/^[0-9a-f-]{36}\\.json$/i.test(name)&&!known.has(name.slice(0,-5)));
+    const orphans=stored.filter(name=>/^[0-9a-f-]{36}\.json$/i.test(name)&&!known.has(name.slice(0,-5)));
     if(orphans.length)warnings.push('На диске есть '+orphans.length+
       ' CSV-импортов вне индекса; сводная статистика НЕ является полной. Запустите аудит TENSEI.');
   }catch(e){if(e.code!=='ENOENT')warnings.push('Не удалось проверить файлы истории CSV: '+e.message)}
