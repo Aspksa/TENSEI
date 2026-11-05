@@ -104,3 +104,41 @@ test('failed cloud answer still emits attempted calls and model token usage',asy
     assert.equal(events.at(-1).modelUsage.length,1);
   }finally{globalThis.fetch=previous}
 });
+
+test('HTTP 404 does not re-send enlarged photo fragments to the same unavailable model',async()=>{
+  const old=globalThis.fetch;let completions=0,catalogs=0;
+  globalThis.fetch=async url=>{
+    if(String(url).endsWith('/models')){catalogs++;return new Response(JSON.stringify({data:[]}),{status:200})}
+    completions++;
+    return new Response(JSON.stringify({error:{message:'model_not_found'}}),{status:404});
+  };
+  try{
+    await assert.rejects(()=>processPhoto({image:await imageData(),name:'not-found.png',
+      cfg:{key:'mock',model:'qwen/qwen3-vl-235b-a22b-instruct',
+        fallback:true,cropRecovery:true,enhance:false,paddle:false,chandra:false,
+        costMode:'auto',maxCloudCalls:3},template:{id:'weights',columns:['ТС','Нетто']}}),
+      /HTTP 404|Нет доступных резервных моделей/);
+    assert.equal(completions,1,'unavailable model must not retry on cropped images');
+    assert.equal(catalogs,1,'catalogue should be queried once for permitted backup');
+  }finally{globalThis.fetch=old}
+});
+test('automatic mode uses chosen model and an actually listed fallback',async()=>{
+  const original=globalThis.fetch;
+  const attempts=[];
+  globalThis.fetch=async(url,options)=>{
+    if(String(url).endsWith('/models'))
+      return new Response(JSON.stringify({data:[{id:'Qwen/Qwen3-VL-New'}]}),{status:200});
+    const id=JSON.parse(options.body).model;attempts.push(id);
+    if(attempts.length===1)return new Response(JSON.stringify({error:{message:'not found'}}),{status:404});
+    return answer('{"rows":[{"vehicle":"A123BC","net":27000}]}');
+  };
+  try{
+    const result=await processPhoto({image:await imageData(),name:'recovered.png',
+      cfg:{key:'mock',model:'Qwen/Retired-VL',fallback:true,cropRecovery:true,
+        enhance:false,paddle:false,chandra:false,costMode:'auto',maxCloudCalls:3},
+      template:{id:'weights',columns:['ТС','Нетто']}});
+    assert.equal(result.rows[0].net,27000);
+    assert.deepEqual(attempts,['Qwen/Retired-VL','Qwen/Qwen3-VL-New']);
+    assert.equal(result.cloudCalls,2);
+  }finally{globalThis.fetch=original}
+});
