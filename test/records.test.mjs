@@ -59,3 +59,20 @@ test('модель не может сама подтвердить сверку 
   const manuallyReviewed=examine([{vehicle:'A123',net:24000,uncertain:true,reviewed:true}])[0];
   assert.equal(manuallyReviewed.issues.length,0);
 });
+
+test('manual product is retained when photo records are saved or read from Cloud response',()=>{
+  const result=safeRows([{tripDate:'2026-11-05',time:'09:30',
+    vehicle:'A123BC',net:27000,product:'СКАЛА +',reviewed:true}]);
+  assert.equal(result[0].product,'СКАЛА +');
+  assert.equal(normalize(result[0]).product,'СКАЛА +');
+  const parsed=parseModel('{"rows":[{"vehicle":"A123BC","net":27000,"product":"Скала","reviewed":true}]}');
+  assert.equal(parsed[0].product,'Скала');
+  assert.equal(parsed[0].reviewed,false);
+});
+test('same vehicle/time/weight on distinct calendar days is not a duplicate',()=>{
+  const rows=examine([
+    {tripDate:'2026-11-04',time:'09:30',vehicle:'А123ВС',net:27000},
+    {tripDate:'2026-11-05',time:'09:30',vehicle:'А123ВС',net:27000}
+  ]);
+  assert.ok(rows.every(x=>!x.issues.some(i=>i.includes('дубль'))));
+});

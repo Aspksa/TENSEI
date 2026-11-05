@@ -32,6 +32,17 @@ function Export-Backup {
         $manifest += @{ path=$relative; sha256=$digest; size=[long]$file.Length }
       }
     }
+    # A backup made while TENSEI is writing must fail closed rather than
+    # silently package a mixture of old and new files.
+    foreach ($record in $manifest) {
+      $source = Join-Path $root ($record.path.Replace('/',[IO.Path]::DirectorySeparatorChar))
+      if (-not (Test-Path -LiteralPath $source -PathType Leaf) -or
+          (Get-Item -LiteralPath $source).Length -ne [long]$record.size -or
+          (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+            [string]$record.sha256) {
+        throw "Source data changed during backup: $($record.path). Close TENSEI and retry."
+      }
+    }
     $item = $zip.CreateEntry('manifest.json')
     $writer = New-Object System.IO.StreamWriter($item.Open(), [Text.Encoding]::UTF8)
     try {
@@ -77,10 +88,20 @@ function Import-Backup {
       $relative = [string]$item.path
       if ($relative -notmatch '^(data|reports)/' -or
           $relative -match '(^|/)\.\.?(/|$)' -or
-          $relative.Contains('\') -or $expected.ContainsKey($relative)) {
+          $relative.Contains('\') -or $relative.Contains(':') -or
+          $relative.Contains([char]0) -or
+          $relative -match '(?i)(^|/)(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|/|$)' -or
+          $expected.ContainsKey($relative)) {
         throw "Unsafe or duplicate manifest path: $relative"
       }
       $expected[$relative] = $item
+    }
+    # Check uncompressed total before writing any archive contents.
+    $declaredTotal = [long]0
+    foreach ($entry in $zip.Entries) {
+      if ($entry.FullName -eq 'manifest.json') { continue }
+      $declaredTotal += [long]$entry.Length
+      if ($declaredTotal -gt 8GB) { throw 'Backup exceeds the 8 GB restore safety limit.' }
     }
     $actual = @{}
     $total = [long]0

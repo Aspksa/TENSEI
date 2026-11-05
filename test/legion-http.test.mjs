@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp,rm,readdir,stat,writeFile} from 'node:fs/promises';
+import {mkdtemp,rm,readdir,stat,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -236,5 +236,52 @@ test('broken saved CSV and draft do not blank fleet statistics or hide missing d
     const book=new ExcelJS.Workbook();
     await book.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
     assert.equal(book.getWorksheet('Контроль').getCell('B16').value.includes('НЕПОЛНАЯ'),true);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});
+
+test('Legion retains more than 50 imports without losing CSV deduplication history',async()=>{
+  const svc=await serverStart();
+  try{
+    const payload={name:'repeat.csv',file:'data:text/csv;base64,'+sampleBase64};
+    for(let i=0;i<52;i++){
+      const result=await post(svc.url,'import-csv',payload);
+      assert.equal(result.status,200,'import '+i+': '+JSON.stringify(result.body));
+    }
+    const index=JSON.parse(await readFile(path.join(svc.dir,'data','legion','imports-index.json'),'utf8'));
+    assert.equal(index.length,52,'index must not silently discard previous 50 imports');
+    const res=await fetch(svc.url+'/api/fleet/stats');
+    assert.equal(res.status,200);
+    const report=await res.json();
+    assert.equal(report.partial,false);
+    assert.equal(report.audit.copyDuplicates,51*3,'repeat copies should not add tonnage');
+    assert.equal(report.totals.trips,3);
+  }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
+});
+
+test('historic CSV saved outside index makes dashboard and Excel explicitly incomplete',async()=>{
+  const svc=await serverStart();
+  try{
+    const p={name:'history.csv',file:'data:text/csv;base64,'+sampleBase64};
+    const first=await post(svc.url,'import-csv',p);
+    const second=await post(svc.url,'import-csv',p);
+    assert.equal(first.status,200);
+    assert.equal(second.status,200);
+    const location=path.join(svc.dir,'data','legion','imports-index.json');
+    const index=JSON.parse(await readFile(location,'utf8'));
+    await writeFile(location,JSON.stringify(index.filter(x=>x.id===second.body.importId)));
+    const res=await fetch(svc.url+'/api/fleet/stats');
+    assert.equal(res.status,200);
+    const data=await res.json();
+    assert.equal(data.partial,true);
+    assert.equal(data.totals.trips,3,'visible trips still available');
+    assert.ok(data.warnings.some(x=>x.includes('вне индекса')));
+    const report=await fetch(svc.url+'/api/diagnostics');
+    assert.equal(report.status,200);
+    const checks=await report.json();
+    assert.equal(checks.checks.storage.orphanImports,1);
+    const exportResponse=await fetch(svc.url+'/api/fleet/export');
+    const book=new ExcelJS.Workbook();
+    await book.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()));
+    assert.ok(String(book.getWorksheet('Контроль').getCell('B16').value).includes('НЕПОЛНАЯ'));
   }finally{svc.child.kill();await rm(svc.dir,{recursive:true,force:true})}
 });

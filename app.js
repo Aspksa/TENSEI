@@ -1,8 +1,8 @@
 import {humorCategory,createHumorRotator} from './humor-messages.js';
 const $=id=>document.getElementById(id);
 const state={rows:[],queue:[],busy:false,revision:0,saveTimer:null,savePending:Promise.resolve(),previewUrl:null,hasKey:false};
-const columns=['tripDate','time','vehicle','driver','tare','gross','net','note'];
-const titles={tripDate:'Дата рейса',time:'Время',vehicle:'Номер ТС',driver:'Водитель',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
+const columns=['tripDate','time','vehicle','driver','product','tare','gross','net','note'];
+const titles={tripDate:'Дата рейса',time:'Время',vehicle:'Номер ТС',driver:'Водитель',product:'Товар',tare:'Тара',gross:'Брутто',net:'Нетто',note:'Примечание'};
 
 async function updateRapidStatus(){
   try{
@@ -60,7 +60,7 @@ function inspect(items){
     if(Number.isFinite(gross)&&Number.isFinite(tare)&&Number.isFinite(net)&&Math.abs(gross-tare-net)>1)issues.push('Брутто − тара ≠ нетто');
     if(Number.isFinite(net)&&net>45000)issues.push('Нетто больше 45 т');
     if(net===0)issues.push('Нулевой вес');
-    const fingerprint=[row.time,row.vehicle,row.tare,row.gross,row.net].join('|');
+    const fingerprint=[row.tripDate,row.time,row.vehicle,row.tare,row.gross,row.net].join('|');
     if(row.vehicle&&seen.has(fingerprint))issues.push('Возможная повторная запись');
     seen.add(fingerprint);
     return {row,index,issues};
@@ -152,7 +152,7 @@ function cell(index,key,row){
 function renderTable(){
   const tbody=$('rowsBody');tbody.replaceChildren();
   const query=$('search').value.trim().toLowerCase(),onlyIssues=$('onlyIssues').checked;
-  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length||!row.reviewed)&&(!query||[row.time,row.vehicle,row.driver,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
+  const selection=inspect(state.rows).filter(({row,issues})=>(!onlyIssues||issues.length||!row.reviewed)&&(!query||[row.time,row.vehicle,row.driver,row.product,row.note,row.source].some(x=>text(x).toLowerCase().includes(query))));
   const fragment=document.createDocumentFragment();
   for(const {row,index,issues} of selection){
     const tr=document.createElement('tr');
@@ -577,7 +577,7 @@ document.querySelector('.toplink')?.addEventListener('click',()=>{$('settingsDet
 $('navReview').onclick=()=>{$('navPhoto').click();$('onlyIssues').checked=true;renderTable();};
 $('addRow').onclick=()=>{
   if(state.busy)return;
-  state.rows.push({time:'',vehicle:'',driver:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
+  state.rows.push({time:'',vehicle:'',driver:'',product:'',tare:null,gross:null,net:null,note:'',source:'Вручную',uncertain:false,reviewed:false});
   updateRecords();$('results').scrollIntoView({behavior:'smooth',block:'start'});
 };
 async function downloadExcel({verifiedOnly=false,signature=null}={}){

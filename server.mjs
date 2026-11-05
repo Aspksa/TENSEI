@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
@@ -19,6 +19,7 @@ import {BUILTIN_TEMPLATES,createTemplate} from './lib/templates.mjs';
 import {createLegionHandler} from './lib/legion-server.mjs';
 import {unifyFleet,fleetFiltered} from './lib/fleet-statistics.mjs';
 import {fleetStatisticsXlsx} from './lib/fleet-excel.mjs';
+import {auditStorage} from './lib/system-audit.mjs';
 import {perceptualHash,hashDistance,selectedModels} from './lib/vision-optimizer.mjs';
 import {classifyDocument,confidenceReport,normalizeMemory,approvedHints,markUnknownVehicles} from './lib/document-intelligence.mjs';
 import {SerialQueue,summarizeUsage} from './lib/processing-queue.mjs';
@@ -46,7 +47,7 @@ async function settings(){
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
-  const tmp=file+'.'+process.pid+'.tmp';
+  const tmp=file+'.'+process.pid+'.'+randomUUID()+'.tmp';
   try{await fs.writeFile(tmp,JSON.stringify(obj,null,2),{mode:0o600});await fs.rename(tmp,file)}
   finally{await fs.rm(tmp,{force:true}).catch(()=>{})}
 }
@@ -197,20 +198,20 @@ async function excel(raw){
   sheet.columns=[
     ['№',7],['Время',11],['ТС',18],['Водитель',24],['Тара, кг',15],
     ['Брутто, кг',16],['Нетто, кг',15],['Нетто, т',14],
-    ['Источник',23],['Примечание',35],['Сверено с фото',17],['Проверить',16],['Аномалии',55],['Дата рейса',15]
+    ['Источник',23],['Примечание',35],['Сверено с фото',17],['Проверить',16],['Аномалии',55],['Дата рейса',15],['Товар',28]
   ].map(([header,width])=>({header,width}));
   sheet.getRow(1).height=28;
   sheet.getRow(1).eachCell(c=>{c.font={bold:true,color:{argb:'FFFFFFFF'}};c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF202A38'}};c.alignment={vertical:'middle'}});
   records.forEach((r,i)=>{
     const row=sheet.addRow([i+1,r.time,r.vehicle,r.driver,r.tare,r.gross,r.net,
       r.net===null?null:r.net/1000,r.source,r.note,r.reviewed?'ДА':'НЕТ',(r.issues.length||!r.reviewed)?'ПРОВЕРИТЬ':'OK',
-      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; '),r.tripDate||'']);
+      [...r.issues,...(!r.reviewed?['Не сверено с оригиналом']:[])].join('; '),r.tripDate||'',r.product||'']);
     for(const n of [5,6,7])row.getCell(n).numFmt='#,##0.##';
     row.getCell(8).numFmt='0.000';
     if(r.issues.length||!r.reviewed)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFE8C3'}};
     else if(i%2)row.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F5F8'}};
   });
-  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:14}};
+  sheet.autoFilter={from:{row:1,column:1},to:{row:records.length+1,column:15}};
   sheet.pageSetup={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1};
   sheet.pageMargins={left:0.25,right:0.25,top:0.45,bottom:0.45,header:0.2,footer:0.2};
   const summary=book.addWorksheet('Контроль');
@@ -233,8 +234,19 @@ async function readFleetImports(){
     warnings.push('Индекс импортов CSV повреждён; используйте резервную копию');
     index=[];
   }
+  // A previous installer truncated the index to 50 even though older CSV
+  // files remained on disk. Never present a complete total if those files
+  // are no longer indexed.
+  try{
+    const known=new Set(index.filter(x=>/^[0-9a-f-]{36}$/i.test(String(x?.id||''))).map(x=>x.id));
+    const stored=await fs.readdir(path.join(dataDir,'legion','imports'));
+    const orphans=stored.filter(name=>/^[0-9a-f-]{36}\.json$/i.test(name)&&!known.has(name.slice(0,-5)));
+    if(orphans.length)warnings.push('На диске есть '+orphans.length+
+      ' CSV-импортов вне индекса; сводная статистика НЕ является полной. Запустите аудит TENSEI.');
+  }catch(e){if(e.code!=='ENOENT')warnings.push('Не удалось проверить файлы истории CSV: '+e.message)}
   let count=0;
-  for(const entry of index.slice(0,50)){
+  if(index.length>=2000)warnings.push('История достигла лимита 2000 импортов; старые CSV могли быть вытеснены. Итог может быть неполным.');
+  for(const entry of index.slice(0,2000)){
     if(!/^[0-9a-f-]{36}$/i.test(String(entry?.id||'')))continue;
     const file=path.join(dataDir,'legion','imports',entry.id+'.json');
     let data;
@@ -243,7 +255,7 @@ async function readFleetImports(){
     if(!Array.isArray(data?.rows)){warnings.push('Пропущен повреждённый импорт '+entry.id);continue}
     const remaining=limit-count;
     if(remaining===0){
-      warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
+      if(data.rows.length)warnings.push('Лимит 50 000 строк: показана только часть истории импортов. Итог НЕ является полным.');
       break;
     }
     const rows=data.rows.slice(0,remaining);
@@ -269,9 +281,11 @@ async function fleetData(){
   const warnings=[...history.warnings];
   if(draftRead.error)warnings.push(draftRead.error);
   if(vehicleRead.error)warnings.push(vehicleRead.error);
+  if(draftRead.value.rows.length>2500)
+    warnings.push('Фотографий в реестре больше 2500: старые записи не участвуют в сверке. Итог НЕ является полным.');
   const result=unifyFleet({imports:history.imports,photoRows:draftRead.value.rows,
     vehicles:Array.isArray(vehicleRead.value)?vehicleRead.value:[]});
-  const partial=history.warnings.length>0||Boolean(draftRead.error);
+  const partial=warnings.length>0;
   return {...result,warnings,partial};
 }
 function fleetOptions(url){
@@ -505,6 +519,10 @@ const server=http.createServer(async(req,res)=>{
         if(!Array.isArray(imports))warnings.push('Список импортов «Легиона» повреждён')}
       catch(e){checks.legionImports=0;
         if(e.code!=='ENOENT')warnings.push('Список CSV-импортов не читается')}
+      const storageAudit=await auditStorage(dataDir);
+      checks.storage=storageAudit.counts;
+      checks.storageHealthy=storageAudit.ok;
+      warnings.push(...storageAudit.findings.map(f=>f.code+': '+f.detail).slice(0,12));
       const rapid=await rapidHealth(process.env.TENSEI_RAPIDOCR_URL);
       checks.rapidOCR=rapid.available?'ready':'optional-offline';
       checks.pythonRequired=false;
