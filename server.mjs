@@ -7,7 +7,7 @@ import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
 import {prepareImage,FORMATS} from './lib/images.mjs';
-import {listCloudModels,recognizeWithFallback} from './lib/cloud.mjs';
+import {listCloudModels,recognizeWithFallback,suggestedVisionModels} from './lib/cloud.mjs';
 import {processPhoto} from './lib/workflow.mjs';
 import {getMineruTask} from './lib/mineru-tasks.mjs';
 import {improvePhoto,cropBox,fixBox} from './lib/vision.mjs';
@@ -345,12 +345,17 @@ const server=http.createServer(async(req,res)=>{
       const cfg=await settings();
       if(!cfg.key)return send(res,200,{ok:false,reason:'Нет ключа Cloud.ru',models:[]});
       const list=await listCloudModels(cfg.key);
-      const chosen=list.includes(cfg.model);
-      const suggested=MODELS.filter(m=>list.includes(m.id));
-      return send(res,200,{ok:true,selected:cfg.model,selectedAvailable:chosen,
+      const effective=selectedModels(cfg.costMode,cfg.model).primary;
+      const chosen=list.includes(effective);
+      const suggested=suggestedVisionModels(list,effective).slice(0,30).map(id=>({
+        id,name:MODELS.find(m=>m.id===id)?.name||id
+      }));
+      return send(res,200,{ok:true,selected:cfg.model,effectiveModel:effective,
+        costMode:cfg.costMode,selectedAvailable:chosen,
         available:suggested,availableCount:list.length,
-        reason:chosen?'Выбранная модель есть в каталоге API. Работа с фото ещё не проверена.':
-          'Выбранной модели нет в списке API для этого ключа. Выберите доступную модель ниже.'});
+        reason:chosen?'Модель, используемая текущим режимом OCR, найдена в каталоге. Чтение фото не проверено.':
+          'В режиме «'+cfg.costMode+'» приложение использует '+effective+
+          ', но этой модели нет в каталоге для ключа. Выберите доступную VL-модель и режим «Авто», затем сохраните.'});
     }
     const mineruStatus=/^\/api\/mineru\/([a-zA-Z0-9_-]{5,160})$/.exec(url.pathname);
     if(req.method==='GET'&&mineruStatus){
