@@ -243,7 +243,7 @@ async function checkConnection(){
       }
     }
     if(result.selectedAvailable){
-      setConnection('Модель найдена в каталоге','ok');
+      setConnection('Модель доступна в каталоге','ok');
       diagnostic('Текущий режим «'+(result.costMode||'auto')+'» использует '+result.effectiveModel+
         '. Модель найдена в каталоге. Проверка не отправляла фотографию.');
     }else{
