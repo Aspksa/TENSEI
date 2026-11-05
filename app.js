@@ -234,9 +234,18 @@ async function checkConnection(){
   try{
     const result=await api('connection',undefined,'GET');
     if(!result.ok)throw Error(result.reason||'Нет API-ключа');
+    if(result.available?.length){
+      // Add real API model IDs to the selector; do not guess what is available.
+      const modelSelect=$('model');
+      for(const item of result.available){
+        if(![...modelSelect.options].some(option=>option.value===item.id))
+          modelSelect.add(new Option(item.name,item.id));
+      }
+    }
     if(result.selectedAvailable){
-      setConnection('Модель доступна в каталоге','ok');
-      diagnostic('Ключ работает. Выбранная модель найдена в каталоге Cloud.ru. Проверка не отправляет фотографию.');
+      setConnection('Модель найдена в каталоге','ok');
+      diagnostic('Текущий режим «'+(result.costMode||'auto')+'» использует '+result.effectiveModel+
+        '. Модель найдена в каталоге. Проверка не отправляла фотографию.');
     }else{
       setConnection('Модель не найдена','error');
       const panel=diagnostic(result.reason||'Выбранная модель недоступна по этому ключу.');
@@ -246,7 +255,8 @@ async function checkConnection(){
         btn.textContent='Выбрать доступную: '+suggestion.name;
         btn.onclick=()=>{
           $('model').value=suggestion.id;
-          diagnostic('Модель выбрана. Нажмите «Сохранить», чтобы применить её.');
+          $('costMode').value='auto';
+          diagnostic('Выбрана '+suggestion.id+'; режим переключён на «Авто» (сейчас он использует выбранную модель). Нажмите «Сохранить», затем «Проверить подключение».');
         };
         panel.append(btn);
       }else{
