@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import ExcelJS from 'exceljs';
 import {DEFAULT_MODEL,MODELS,parseModel,safeRows} from './lib/records.mjs';
@@ -47,7 +47,7 @@ async function settings(){
 }
 async function writeJson(file,obj){
   await fs.mkdir(dataDir,{recursive:true});
-  const tmp=file+'.'+process.pid+'.tmp';
+  const tmp=file+'.'+process.pid+'.'+randomUUID()+'.tmp';
   try{await fs.writeFile(tmp,JSON.stringify(obj,null,2),{mode:0o600});await fs.rename(tmp,file)}
   finally{await fs.rm(tmp,{force:true}).catch(()=>{})}
 }
